@@ -1,0 +1,17 @@
+{
+  "classification_results": {
+    "Random Forest": {
+      "accuracy": 0.8966666666666666,
+      "auc": 0.9169151712018745
+    }
+  },
+  "regression_results": {
+    "Random Forest Regressor": {
+      "r2": 0.1163034490371283,
+      "mae": 17.052185684109208,
+      "rmse": 21.61087176016097
+    }
+  },
+  "best_classification_model": "Random Forest",
+  "best_regression_model": "Random Forest Regressor"
+}
