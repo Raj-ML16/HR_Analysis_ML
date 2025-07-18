@@ -1,0 +1,48 @@
+# Virtual environment
+.venv/
+env/
+venv/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# VS Code settings
+.vscode/
+
+# Data files
+*.csv
+*.tsv
+*.xls
+*.xlsx
+~$*.xls*
+
+# Model artifacts
+*.h5
+*.hdf5
+*.pkl
+*.joblib
+*.pt
+*.onnx
+*.sav
+
+# Logs and outputs
+*.log
+*.out
+*.tmp
+
+# OS and system files
+.DS_Store
+Thumbs.db
+
+# Environment and config
+.env
+*.env
+
+# Other unwanted folders
+__MACOSX/
+*.bak
