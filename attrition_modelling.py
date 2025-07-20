@@ -19,10 +19,14 @@ employee_df = pd.read_csv('employee_data_processed.csv')
 
 print("="*60)
 print("FIXED MACHINE LEARNING PIPELINE")
-print("Ensures ALL at-risk employees get departure dates")
+print("Proper sequence: Data → WHO Model → WHEN Model → Export")
 print("="*60)
 
-# 1. Data Preparation
+# 1. DATA PREPARATION
+print("\n" + "="*40)
+print("STEP 1: DATA PREPARATION")
+print("="*40)
+
 def prepare_features(df):
     """Prepare features for modeling"""
     
@@ -70,168 +74,17 @@ def prepare_features(df):
     
     return df_model, feature_cols, encoders
 
-def estimate_departure_timeline(attrition_prob, employee_id):
-    """Estimate departure timeline based on risk probability with variation"""
-    # Use employee_id for unique seed to get different results per employee
-    seed_value = hash(str(employee_id)) % 10000
-    np.random.seed(seed_value)
-    
-    if attrition_prob >= 0.7:    # High risk
-        base_days = 60  # 2 months average
-        variation = np.random.randint(-20, 21)  # ±20 days variation
-        return max(30, min(90, base_days + variation))
-    elif attrition_prob >= 0.4:  # Medium risk  
-        base_days = 135  # 4.5 months average
-        variation = np.random.randint(-30, 31)  # ±30 days variation
-        return max(90, min(180, base_days + variation))
-    else:                        # Low risk
-        base_days = 270  # 9 months average
-        variation = np.random.randint(-60, 61)  # ±60 days variation
-        return max(180, min(365, base_days + variation))
-
-def export_predictions_to_excel(models_dict, employee_df):
-    """Export WHO and WHEN predictions to Excel for HR team - FIXED VERSION"""
-    
-    print("\n" + "="*40)
-    print("EXPORTING COMPLETE PREDICTIONS TO EXCEL")
-    print("="*40)
-    
-    # Get active employees
-    active_employees = employee_df[employee_df['Status'] == 'Active'].copy()
-    
-    if len(active_employees) == 0:
-        print("No active employees found!")
-        return None
-    
-    # Prepare features and make predictions
-    X = active_employees[models_dict['feature_cols']]
-    
-    # WHO predictions
-    attrition_prob = models_dict['best_classifier'].predict_proba(X)[:, 1]
-    
-    # WHEN predictions - FIXED: Apply to ALL medium+ risk employees
-    lead_times = np.full(len(active_employees), np.nan)
-    
-    # Lower threshold: Medium+ risk employees (>= 0.4) get predictions
-    medium_high_risk_mask = attrition_prob >= 0.4
-    
-    if np.any(medium_high_risk_mask):
-        # Use ML model for high-risk employees (>= 0.5) - ROUND TO INTEGERS
-        high_risk_indices = np.where((attrition_prob >= 0.5) & medium_high_risk_mask)[0]
-        if len(high_risk_indices) > 0:
-            ml_predictions = models_dict['best_regressor'].predict(X.iloc[high_risk_indices])
-            lead_times[high_risk_indices] = np.round(ml_predictions).astype(int)
-        
-        # Use risk-based estimation for medium-risk employees (0.4-0.5)
-        medium_risk_indices = np.where((attrition_prob >= 0.4) & (attrition_prob < 0.5))[0]
-        for idx in medium_risk_indices:
-            employee_id = active_employees.iloc[idx]['Employee_ID']
-            lead_times[idx] = estimate_departure_timeline(attrition_prob[idx], employee_id)
-    
-    # For low-risk employees who might still have some probability
-    low_risk_indices = np.where((attrition_prob >= 0.2) & (attrition_prob < 0.4))[0]
-    for idx in low_risk_indices:
-        employee_id = active_employees.iloc[idx]['Employee_ID']
-        lead_times[idx] = estimate_departure_timeline(attrition_prob[idx], employee_id)
-    
-    # Add predictions to dataframe
-    active_employees['Attrition_Probability'] = attrition_prob.round(3)
-    active_employees['Predicted_Lead_Time_Days'] = lead_times
-    
-    # Calculate departure date - FIXED: For ALL employees with lead times
-    today = datetime.now()
-    active_employees['Estimated_Departure_Date'] = active_employees.apply(
-        lambda row: (today + timedelta(days=int(row['Predicted_Lead_Time_Days']))).strftime('%Y-%m-%d') 
-        if not pd.isna(row['Predicted_Lead_Time_Days']) else None, axis=1
-    )
-    
-    # Risk categorization
-    def get_risk_category(prob):
-        if prob >= 0.7: return 'High'
-        elif prob >= 0.4: return 'Medium'
-        else: return 'Low'
-    
-    active_employees['Risk_Category'] = active_employees['Attrition_Probability'].apply(get_risk_category)
-    
-    # Create Excel file
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f'Employee_Attrition_Predictions_FIXED_{timestamp}.xlsx'
-    
-    with pd.ExcelWriter(filename, engine='openpyxl') as writer:
-        
-        # Sheet 1: High Risk Employees (Most Important)
-        high_risk = active_employees[active_employees['Risk_Category'] == 'High']
-        if len(high_risk) > 0:
-            high_risk_cols = [
-                'Employee_ID', 'Name', 'Department', 'Designation', 
-                'Attrition_Probability', 'Predicted_Lead_Time_Days', 'Estimated_Departure_Date',
-                'Job_Satisfaction_Score', 'Market_Salary_Ratio', 'Manager_Rating', 'Monthly_Salary'
-            ]
-            high_risk_data = high_risk[high_risk_cols].sort_values('Attrition_Probability', ascending=False)
-            high_risk_data.to_excel(writer, sheet_name='High_Risk_Employees', index=False)
-        
-        # Sheet 2: All Predictions
-        prediction_cols = [
-            'Employee_ID', 'Name', 'Department', 'Risk_Category', 'Attrition_Probability',
-            'Predicted_Lead_Time_Days', 'Estimated_Departure_Date', 
-            'Job_Satisfaction_Score', 'Manager_Rating', 'Market_Salary_Ratio'
-        ]
-        all_predictions = active_employees[prediction_cols].sort_values('Attrition_Probability', ascending=False)
-        all_predictions.to_excel(writer, sheet_name='All_Employee_Predictions', index=False)
-        
-        # Sheet 3: Summary
-        summary_data = {
-            'Metric': [
-                'Total Active Employees',
-                'High Risk Employees',
-                'Medium Risk Employees',
-                'Low Risk Employees',
-                'Employees with Departure Dates',
-                'Best Classification Model',
-                'Classification AUC',
-                'Best Regression Model',
-                'Regression R²'
-            ],
-            'Value': [
-                len(active_employees),
-                len(active_employees[active_employees['Risk_Category'] == 'High']),
-                len(active_employees[active_employees['Risk_Category'] == 'Medium']),
-                len(active_employees[active_employees['Risk_Category'] == 'Low']),
-                len(active_employees[active_employees['Estimated_Departure_Date'].notna()]),
-                'Random Forest',  # Based on your results
-                '0.916',          # Based on your results
-                'Random Forest Regressor',
-                '0.116'
-            ]
-        }
-        summary_df = pd.DataFrame(summary_data)
-        summary_df.to_excel(writer, sheet_name='Summary', index=False)
-    
-    # Display results
-    risk_counts = active_employees['Risk_Category'].value_counts()
-    print(f"Risk Distribution:")
-    for risk, count in risk_counts.items():
-        percentage = (count / len(active_employees)) * 100
-        print(f"  {risk} Risk: {count} employees ({percentage:.1f}%)")
-    
-    # Show departure date coverage
-    with_dates = len(active_employees[active_employees['Estimated_Departure_Date'].notna()])
-    without_dates = len(active_employees[active_employees['Estimated_Departure_Date'].isna()])
-    print(f"\nDeparture Date Coverage:")
-    print(f"  With departure dates: {with_dates} employees ({with_dates/len(active_employees)*100:.1f}%)")
-    print(f"  Without departure dates: {without_dates} employees ({without_dates/len(active_employees)*100:.1f}%)")
-    
-    print(f"\n✅ FIXED Excel file saved: {filename}")
-    return filename
-
+# Prepare data
 df_model, feature_cols, encoders = prepare_features(employee_df)
 
-print(f"Features prepared: {len(feature_cols)} features")
-print(f"Dataset shape: {df_model.shape}")
+print(f"✅ Features prepared: {len(feature_cols)} features")
+print(f"✅ Dataset shape: {df_model.shape}")
+print(f"✅ Active employees: {len(df_model[df_model['Status'] == 'Active'])}")
+print(f"✅ Resigned employees: {len(df_model[df_model['Status'] == 'Resigned'])}")
 
 # 2. WHO WILL LEAVE - Classification Models
 print("\n" + "="*40)
-print("WHO WILL LEAVE - CLASSIFICATION")
+print("STEP 2: WHO WILL LEAVE - CLASSIFICATION")
 print("="*40)
 
 X = df_model[feature_cols]
@@ -252,8 +105,8 @@ X_test_scaled = scaler.transform(X_test)
 # Model results storage
 classification_results = {}
 
-# 2.1 Random Forest (fastest for demo)
-print("Training Random Forest...")
+# 2.1 Random Forest Classifier
+print("\nTraining Random Forest Classifier...")
 rf_params = {'n_estimators': [50, 100], 'max_depth': [5, 10], 'min_samples_split': [2, 5]}
 rf_grid = GridSearchCV(RandomForestClassifier(random_state=42), rf_params, cv=3, scoring='roc_auc')
 rf_grid.fit(X_train, y_train)
@@ -270,16 +123,39 @@ classification_results['Random Forest'] = {
     'model': rf_grid.best_estimator_
 }
 
-print(f"RF - Accuracy: {rf_accuracy:.3f}, AUC: {rf_auc:.3f}")
+print(f"✅ RF - Accuracy: {rf_accuracy:.3f}, AUC: {rf_auc:.3f}")
+
+# 2.2 XGBoost Classifier (Additional model for comparison)
+print("Training XGBoost Classifier...")
+try:
+    xgb_params = {'n_estimators': [50, 100], 'max_depth': [3, 5], 'learning_rate': [0.1, 0.2]}
+    xgb_grid = GridSearchCV(XGBClassifier(random_state=42, eval_metric='logloss'), xgb_params, cv=3, scoring='roc_auc')
+    xgb_grid.fit(X_train, y_train)
+
+    xgb_pred = xgb_grid.predict(X_test)
+    xgb_prob = xgb_grid.predict_proba(X_test)[:, 1]
+
+    xgb_accuracy = accuracy_score(y_test, xgb_pred)
+    xgb_auc = roc_auc_score(y_test, xgb_prob)
+
+    classification_results['XGBoost'] = {
+        'accuracy': xgb_accuracy,
+        'auc': xgb_auc,
+        'model': xgb_grid.best_estimator_
+    }
+    
+    print(f"✅ XGB - Accuracy: {xgb_accuracy:.3f}, AUC: {xgb_auc:.3f}")
+except Exception as e:
+    print(f"⚠️ XGBoost failed: {e}")
 
 # Best classification model
 best_clf_model = max(classification_results.keys(), key=lambda x: classification_results[x]['auc'])
-print(f"\nBest Classification Model: {best_clf_model}")
-print(f"Best AUC: {classification_results[best_clf_model]['auc']:.3f}")
+print(f"\n🏆 Best Classification Model: {best_clf_model}")
+print(f"🏆 Best AUC: {classification_results[best_clf_model]['auc']:.3f}")
 
 # 3. WHEN WILL THEY LEAVE - Regression Models
 print("\n" + "="*40)
-print("WHEN WILL THEY LEAVE - REGRESSION")
+print("STEP 3: WHEN WILL THEY LEAVE - REGRESSION")
 print("="*40)
 
 # Use only resigned employees for lead time prediction
@@ -289,6 +165,7 @@ y_reg = resigned_df['Lead_Time']
 
 print(f"Regression dataset: {X_reg.shape}")
 print(f"Lead time range: {y_reg.min():.0f} - {y_reg.max():.0f} days")
+print(f"Lead time average: {y_reg.mean():.1f} days")
 
 # Split regression data
 X_reg_train, X_reg_test, y_reg_train, y_reg_test = train_test_split(X_reg, y_reg, test_size=0.2, random_state=42)
@@ -297,7 +174,7 @@ X_reg_train, X_reg_test, y_reg_train, y_reg_test = train_test_split(X_reg, y_reg
 regression_results = {}
 
 # 3.1 Random Forest Regressor
-print("Training Random Forest Regressor...")
+print("\nTraining Random Forest Regressor...")
 rfr_params = {'n_estimators': [50, 100], 'max_depth': [5, 10], 'min_samples_split': [2, 5]}
 rfr_grid = GridSearchCV(RandomForestRegressor(random_state=42), rfr_params, cv=3, scoring='r2')
 rfr_grid.fit(X_reg_train, y_reg_train)
@@ -314,14 +191,42 @@ regression_results['Random Forest Regressor'] = {
     'model': rfr_grid.best_estimator_
 }
 
-print(f"RFR - R²: {rfr_r2:.3f}, MAE: {rfr_mae:.1f} days, RMSE: {rfr_rmse:.1f} days")
+print(f"✅ RFR - R²: {rfr_r2:.3f}, MAE: {rfr_mae:.1f} days, RMSE: {rfr_rmse:.1f} days")
+
+# 3.2 XGBoost Regressor (Additional model for comparison)
+print("Training XGBoost Regressor...")
+try:
+    xgbr_params = {'n_estimators': [50, 100], 'max_depth': [3, 5], 'learning_rate': [0.1, 0.2]}
+    xgbr_grid = GridSearchCV(XGBRegressor(random_state=42), xgbr_params, cv=3, scoring='r2')
+    xgbr_grid.fit(X_reg_train, y_reg_train)
+
+    xgbr_pred = xgbr_grid.predict(X_reg_test)
+    xgbr_r2 = r2_score(y_reg_test, xgbr_pred)
+    xgbr_mae = mean_absolute_error(y_reg_test, xgbr_pred)
+    xgbr_rmse = np.sqrt(mean_squared_error(y_reg_test, xgbr_pred))
+
+    regression_results['XGBoost Regressor'] = {
+        'r2': xgbr_r2,
+        'mae': xgbr_mae,
+        'rmse': xgbr_rmse,
+        'model': xgbr_grid.best_estimator_
+    }
+    
+    print(f"✅ XGBR - R²: {xgbr_r2:.3f}, MAE: {xgbr_mae:.1f} days, RMSE: {xgbr_rmse:.1f} days")
+except Exception as e:
+    print(f"⚠️ XGBoost Regressor failed: {e}")
 
 # Best regression model
 best_reg_model = max(regression_results.keys(), key=lambda x: regression_results[x]['r2'])
-print(f"\nBest Regression Model: {best_reg_model}")
-print(f"Best R²: {regression_results[best_reg_model]['r2']:.3f}")
+print(f"\n🏆 Best Regression Model: {best_reg_model}")
+print(f"🏆 Best R²: {regression_results[best_reg_model]['r2']:.3f}")
 
-# 4. Save Models and Results
+# 4. SAVE TRAINED MODELS
+print("\n" + "="*40)
+print("STEP 4: SAVING TRAINED MODELS")
+print("="*40)
+
+# Package all trained components
 models_to_save = {
     'best_classifier': classification_results[best_clf_model]['model'],
     'best_regressor': regression_results[best_reg_model]['model'],
@@ -330,7 +235,9 @@ models_to_save = {
     'feature_cols': feature_cols
 }
 
+# Save models
 joblib.dump(models_to_save, 'attrition_models_fixed.pkl')
+print("✅ Models saved to 'attrition_models_fixed.pkl'")
 
 # Save results summary
 results_summary = {
@@ -357,29 +264,202 @@ with open('model_results_fixed.json', 'w') as f:
     
     json.dump(results_summary_json, f, indent=2)
 
-# Export predictions to Excel
+print("✅ Results saved to 'model_results_fixed.json'")
+
+# 5. EXPORT PREDICTIONS TO EXCEL (After models are trained!)
+print("\n" + "="*40)
+print("STEP 5: EXPORTING PREDICTIONS TO EXCEL")
+print("Using trained models to make predictions")
+print("="*40)
+
+def estimate_departure_timeline(attrition_prob, employee_id):
+    """Estimate departure timeline based on risk probability with variation"""
+    # Use employee_id for unique seed to get different results per employee
+    seed_value = hash(str(employee_id)) % 10000
+    np.random.seed(seed_value)
+    
+    if attrition_prob >= 0.7:    # High risk
+        base_days = 60  # 2 months average
+        variation = np.random.randint(-20, 21)  # ±20 days variation
+        return max(30, min(90, base_days + variation))
+    elif attrition_prob >= 0.4:  # Medium risk  
+        base_days = 135  # 4.5 months average
+        variation = np.random.randint(-30, 31)  # ±30 days variation
+        return max(90, min(180, base_days + variation))
+    else:                        # Low risk
+        base_days = 270  # 9 months average
+        variation = np.random.randint(-60, 61)  # ±60 days variation
+        return max(180, min(365, base_days + variation))
+
+def export_predictions_to_excel(models_dict, employee_df):
+    """Export WHO and WHEN predictions to Excel for HR team"""
+    
+    print("Making predictions for active employees...")
+    
+    # Get active employees
+    active_employees = employee_df[employee_df['Status'] == 'Active'].copy()
+    
+    if len(active_employees) == 0:
+        print("❌ No active employees found!")
+        return None
+    
+    print(f"📊 Processing {len(active_employees)} active employees...")
+    
+    # Prepare features and make predictions
+    X = active_employees[models_dict['feature_cols']]
+    
+    # WHO predictions using trained classifier
+    print("🎯 Making WHO predictions (attrition probability)...")
+    attrition_prob = models_dict['best_classifier'].predict_proba(X)[:, 1]
+    
+    # WHEN predictions using trained regressor
+    print("📅 Making WHEN predictions (departure timeline)...")
+    lead_times = np.full(len(active_employees), np.nan)
+    
+    # Lower threshold: Medium+ risk employees (>= 0.4) get predictions
+    medium_high_risk_mask = attrition_prob >= 0.4
+    
+    if np.any(medium_high_risk_mask):
+        # Use ML model for high-risk employees (>= 0.5)
+        high_risk_indices = np.where((attrition_prob >= 0.5) & medium_high_risk_mask)[0]
+        if len(high_risk_indices) > 0:
+            ml_predictions = models_dict['best_regressor'].predict(X.iloc[high_risk_indices])
+            lead_times[high_risk_indices] = np.round(ml_predictions).astype(int)
+            print(f"  🔴 {len(high_risk_indices)} high-risk employees: ML predictions")
+        
+        # Use risk-based estimation for medium-risk employees (0.4-0.5)
+        medium_risk_indices = np.where((attrition_prob >= 0.4) & (attrition_prob < 0.5))[0]
+        for idx in medium_risk_indices:
+            employee_id = active_employees.iloc[idx]['Employee_ID']
+            lead_times[idx] = estimate_departure_timeline(attrition_prob[idx], employee_id)
+        print(f"  🟡 {len(medium_risk_indices)} medium-risk employees: Risk-based estimates")
+    
+    # For low-risk employees who might still have some probability
+    low_risk_indices = np.where((attrition_prob >= 0.2) & (attrition_prob < 0.4))[0]
+    for idx in low_risk_indices:
+        employee_id = active_employees.iloc[idx]['Employee_ID']
+        lead_times[idx] = estimate_departure_timeline(attrition_prob[idx], employee_id)
+    print(f"  🟢 {len(low_risk_indices)} low-risk employees: Conservative estimates")
+    
+    # Add predictions to dataframe
+    active_employees['Attrition_Probability'] = attrition_prob.round(3)
+    active_employees['Predicted_Lead_Time_Days'] = lead_times
+    
+    # Calculate departure date
+    today = datetime.now()
+    active_employees['Estimated_Departure_Date'] = active_employees.apply(
+        lambda row: (today + timedelta(days=int(row['Predicted_Lead_Time_Days']))).strftime('%Y-%m-%d') 
+        if not pd.isna(row['Predicted_Lead_Time_Days']) else None, axis=1
+    )
+    
+    # Risk categorization
+    def get_risk_category(prob):
+        if prob >= 0.7: return 'High'
+        elif prob >= 0.4: return 'Medium'
+        else: return 'Low'
+    
+    active_employees['Risk_Category'] = active_employees['Attrition_Probability'].apply(get_risk_category)
+    
+    # Create Excel file
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f'Employee_Attrition_Predictions_FINAL_{timestamp}.xlsx'
+    
+    print(f"📊 Creating Excel file: {filename}")
+    
+    with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+        
+        # Sheet 1: High Risk Employees (Most Important)
+        high_risk = active_employees[active_employees['Risk_Category'] == 'High']
+        if len(high_risk) > 0:
+            high_risk_cols = [
+                'Employee_ID', 'Name', 'Department', 'Designation', 
+                'Attrition_Probability', 'Predicted_Lead_Time_Days', 'Estimated_Departure_Date',
+                'Job_Satisfaction_Score', 'Market_Salary_Ratio', 'Manager_Rating', 'Monthly_Salary'
+            ]
+            high_risk_data = high_risk[high_risk_cols].sort_values('Attrition_Probability', ascending=False)
+            high_risk_data.to_excel(writer, sheet_name='High_Risk_Employees', index=False)
+            print(f"  📋 High Risk sheet: {len(high_risk)} employees")
+        
+        # Sheet 2: All Predictions
+        prediction_cols = [
+            'Employee_ID', 'Name', 'Department', 'Risk_Category', 'Attrition_Probability',
+            'Predicted_Lead_Time_Days', 'Estimated_Departure_Date', 
+            'Job_Satisfaction_Score', 'Manager_Rating', 'Market_Salary_Ratio'
+        ]
+        all_predictions = active_employees[prediction_cols].sort_values('Attrition_Probability', ascending=False)
+        all_predictions.to_excel(writer, sheet_name='All_Employee_Predictions', index=False)
+        print(f"  📋 All Predictions sheet: {len(all_predictions)} employees")
+        
+        # Sheet 3: Summary
+        summary_data = {
+            'Metric': [
+                'Total Active Employees',
+                'High Risk Employees',
+                'Medium Risk Employees',
+                'Low Risk Employees',
+                'Employees with Departure Dates',
+                'Best Classification Model',
+                'Classification AUC',
+                'Best Regression Model',
+                'Regression R²'
+            ],
+            'Value': [
+                len(active_employees),
+                len(active_employees[active_employees['Risk_Category'] == 'High']),
+                len(active_employees[active_employees['Risk_Category'] == 'Medium']),
+                len(active_employees[active_employees['Risk_Category'] == 'Low']),
+                len(active_employees[active_employees['Estimated_Departure_Date'].notna()]),
+                best_clf_model,
+                f"{classification_results[best_clf_model]['auc']:.3f}",
+                best_reg_model,
+                f"{regression_results[best_reg_model]['r2']:.3f}"
+            ]
+        }
+        summary_df = pd.DataFrame(summary_data)
+        summary_df.to_excel(writer, sheet_name='Summary', index=False)
+        print(f"  📋 Summary sheet created")
+    
+    # Display results
+    print(f"\n📈 RISK DISTRIBUTION:")
+    risk_counts = active_employees['Risk_Category'].value_counts()
+    for risk, count in risk_counts.items():
+        percentage = (count / len(active_employees)) * 100
+        print(f"  {risk} Risk: {count} employees ({percentage:.1f}%)")
+    
+    # Show departure date coverage
+    with_dates = len(active_employees[active_employees['Estimated_Departure_Date'].notna()])
+    without_dates = len(active_employees[active_employees['Estimated_Departure_Date'].isna()])
+    print(f"\n📅 DEPARTURE DATE COVERAGE:")
+    print(f"  With departure dates: {with_dates} employees ({with_dates/len(active_employees)*100:.1f}%)")
+    print(f"  Without departure dates: {without_dates} employees ({without_dates/len(active_employees)*100:.1f}%)")
+    
+    print(f"\n✅ Excel file saved: {filename}")
+    return filename
+
+# NOW call the export function with trained models
 excel_filename = export_predictions_to_excel(models_to_save, df_model)
 
+# 6. FINAL RESULTS SUMMARY
 print("\n" + "="*60)
-print("FIXED RESULTS SUMMARY")
+print("FINAL RESULTS SUMMARY")
 print("="*60)
 
-print(f"\nCLASSIFICATION (WHO WILL LEAVE):")
+print(f"\n🎯 CLASSIFICATION RESULTS (WHO WILL LEAVE):")
 for model, results in classification_results.items():
-    print(f"{model}: Accuracy = {results['accuracy']:.3f}, AUC = {results['auc']:.3f}")
+    print(f"  {model}: Accuracy = {results['accuracy']:.3f}, AUC = {results['auc']:.3f}")
 
-print(f"\nREGRESSION (WHEN WILL THEY LEAVE):")
+print(f"\n📅 REGRESSION RESULTS (WHEN WILL THEY LEAVE):")
 for model, results in regression_results.items():
-    print(f"{model}: R² = {results['r2']:.3f}, MAE = {results['mae']:.1f} days")
+    print(f"  {model}: R² = {results['r2']:.3f}, MAE = {results['mae']:.1f} days")
 
-print(f"\nFILES CREATED:")
-print(f"✅ Fixed models saved to 'attrition_models_fixed.pkl'")
-print(f"✅ Fixed results saved to 'model_results_fixed.json'")
-print(f"📊 Fixed Excel predictions saved to '{excel_filename}'")
+print(f"\n📁 FILES CREATED:")
+print(f"  ✅ Models: 'attrition_models_fixed.pkl'")
+print(f"  ✅ Results: 'model_results_fixed.json'")
+print(f"  ✅ Predictions: '{excel_filename}'")
 
-print(f"\n🎯 KEY IMPROVEMENTS:")
-print(f"✅ ALL Medium+ risk employees now get departure dates")
-print(f"✅ Risk-based timeline estimation for medium-risk employees")
-print(f"✅ ML model predictions for high-risk employees")
-print(f"✅ Complete hiring timeline possible for Module 2")
+print(f"\n🏆 BEST MODELS:")
+print(f"  Classification: {best_clf_model} (AUC: {classification_results[best_clf_model]['auc']:.3f})")
+print(f"  Regression: {best_reg_model} (R²: {regression_results[best_reg_model]['r2']:.3f})")
+
+print(f"\n✅ PIPELINE COMPLETED SUCCESSFULLY!")
 print("="*60)
