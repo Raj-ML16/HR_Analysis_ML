@@ -57,14 +57,19 @@ st.markdown("""
 
 @st.cache_data
 def load_data():
-    """Load employee data"""
+    """Load employee data - Updated to match new pipeline"""
     try:
         employee_df = pd.read_csv('employee_data_processed.csv')
         try:
-            with open('model_results.json', 'r') as f:
+            # Try new results file first, then fallback to old
+            with open('model_results_fixed.json', 'r') as f:
                 results = json.load(f)
         except FileNotFoundError:
-            results = None
+            try:
+                with open('model_results.json', 'r') as f:
+                    results = json.load(f)
+            except FileNotFoundError:
+                results = None
         return employee_df, results
     except FileNotFoundError:
         st.error("❌ Data files not found. Please run the modeling pipeline first.")
@@ -72,31 +77,45 @@ def load_data():
 
 @st.cache_resource
 def load_models():
-    """Load trained models"""
+    """Load trained models - Updated to match new pipeline"""
     try:
-        models = joblib.load('attrition_models.pkl')
+        # Try new models file first, then fallback to old
+        try:
+            models = joblib.load('attrition_models_fixed.pkl')
+        except FileNotFoundError:
+            models = joblib.load('attrition_models.pkl')
         return models
     except FileNotFoundError:
         st.error("❌ Models not found. Please run the modeling pipeline first.")
         return None
 
 def prepare_features_for_prediction(df, models):
-    """Prepare features with proper encoding"""
+    """Prepare features with proper encoding - Updated for new pipeline"""
     df_processed = df.copy()
     
     # Handle missing values
-    df_processed['Manager_ID'] = df_processed['Manager_ID'].fillna('None')
+    if 'Manager_ID' in df_processed.columns:
+        df_processed['Manager_ID'] = df_processed['Manager_ID'].fillna('None')
     
-    # Add engineered features
+    # Add engineered features if missing
     if 'Tenure_Years' not in df_processed.columns:
-        df_processed['Joining_Date'] = pd.to_datetime(df_processed['Joining_Date'])
-        df_processed['Tenure_Years'] = ((pd.Timestamp.now() - df_processed['Joining_Date']).dt.days / 365).round(1)
+        if 'Joining_Date' in df_processed.columns:
+            df_processed['Joining_Date'] = pd.to_datetime(df_processed['Joining_Date'])
+            df_processed['Tenure_Years'] = ((pd.Timestamp.now() - df_processed['Joining_Date']).dt.days / 365).round(1)
+        else:
+            df_processed['Tenure_Years'] = 2.0  # Default value
     
     if 'Experience_Tenure_Ratio' not in df_processed.columns:
-        df_processed['Experience_Tenure_Ratio'] = (df_processed['Total_Experience'] / (df_processed['Tenure_Years'] + 0.1)).round(2)
+        if 'Total_Experience' in df_processed.columns:
+            df_processed['Experience_Tenure_Ratio'] = (df_processed['Total_Experience'] / (df_processed['Tenure_Years'] + 0.1)).round(2)
+        else:
+            df_processed['Experience_Tenure_Ratio'] = 1.0  # Default value
     
     if 'Salary_Satisfaction' not in df_processed.columns:
-        df_processed['Salary_Satisfaction'] = (df_processed['Market_Salary_Ratio'] * df_processed['Job_Satisfaction_Score']).round(2)
+        if 'Market_Salary_Ratio' in df_processed.columns and 'Job_Satisfaction_Score' in df_processed.columns:
+            df_processed['Salary_Satisfaction'] = (df_processed['Market_Salary_Ratio'] * df_processed['Job_Satisfaction_Score']).round(2)
+        else:
+            df_processed['Salary_Satisfaction'] = 5.0  # Default value
     
     # Apply encoders
     encoders = models['encoders']
@@ -135,12 +154,31 @@ def prepare_features_for_prediction(df, models):
     feature_cols = models['feature_cols']
     for feature in feature_cols:
         if feature not in df_processed.columns:
-            df_processed[feature] = 0
+            df_processed[feature] = 0  # Default value for missing features
     
     return df_processed[feature_cols]
 
+def estimate_departure_timeline(attrition_prob, employee_id):
+    """Estimate departure timeline - Same as in new pipeline"""
+    # Use employee_id for unique seed to get different results per employee
+    seed_value = hash(str(employee_id)) % 10000
+    np.random.seed(seed_value)
+    
+    if attrition_prob >= 0.7:    # High risk
+        base_days = 60  # 2 months average
+        variation = np.random.randint(-20, 21)  # ±20 days variation
+        return max(30, min(90, base_days + variation))
+    elif attrition_prob >= 0.4:  # Medium risk  
+        base_days = 135  # 4.5 months average
+        variation = np.random.randint(-30, 31)  # ±30 days variation
+        return max(90, min(180, base_days + variation))
+    else:                        # Low risk
+        base_days = 270  # 9 months average
+        variation = np.random.randint(-60, 61)  # ±60 days variation
+        return max(180, min(365, base_days + variation))
+
 def generate_predictions(employee_df, models):
-    """Generate predictions for active employees"""
+    """Generate predictions for active employees - Updated to match new pipeline logic"""
     active_employees = employee_df[employee_df['Status'] == 'Active'].copy()
     
     if len(active_employees) == 0 or models is None:
@@ -155,29 +193,47 @@ def generate_predictions(employee_df, models):
         # WHO predictions
         attrition_prob = models['best_classifier'].predict_proba(X)[:, 1]
         
-        # WHEN predictions
+        # WHEN predictions - Updated to match new pipeline logic
         lead_times = np.full(len(active_employees), np.nan)
-        high_risk_mask = attrition_prob > 0.5
         
-        if np.any(high_risk_mask):
-            lead_times[high_risk_mask] = models['best_regressor'].predict(X[high_risk_mask])
+        # Lower threshold: Medium+ risk employees (>= 0.4) get predictions
+        medium_high_risk_mask = attrition_prob >= 0.4
         
-        # Add predictions
+        if np.any(medium_high_risk_mask):
+            # Use ML model for high-risk employees (>= 0.5) - ROUND TO INTEGERS
+            high_risk_indices = np.where((attrition_prob >= 0.5) & medium_high_risk_mask)[0]
+            if len(high_risk_indices) > 0:
+                ml_predictions = models['best_regressor'].predict(X.iloc[high_risk_indices])
+                lead_times[high_risk_indices] = np.round(ml_predictions).astype(int)
+            
+            # Use risk-based estimation for medium-risk employees (0.4-0.5)
+            medium_risk_indices = np.where((attrition_prob >= 0.4) & (attrition_prob < 0.5))[0]
+            for idx in medium_risk_indices:
+                employee_id = active_employees.iloc[idx]['Employee_ID']
+                lead_times[idx] = estimate_departure_timeline(attrition_prob[idx], employee_id)
+        
+        # For low-risk employees who might still have some probability
+        low_risk_indices = np.where((attrition_prob >= 0.2) & (attrition_prob < 0.4))[0]
+        for idx in low_risk_indices:
+            employee_id = active_employees.iloc[idx]['Employee_ID']
+            lead_times[idx] = estimate_departure_timeline(attrition_prob[idx], employee_id)
+        
+        # Add predictions to dataframe
         active_employees['Attrition_Probability'] = attrition_prob.round(3)
         active_employees['Predicted_Lead_Time_Days'] = lead_times
         
-        # Calculate departure date
+        # Calculate departure date - For ALL employees with lead times
         today = datetime.now()
         active_employees['Estimated_Departure_Date'] = active_employees.apply(
             lambda row: (today + timedelta(days=int(row['Predicted_Lead_Time_Days']))).strftime('%Y-%m-%d') 
             if not pd.isna(row['Predicted_Lead_Time_Days']) else None, axis=1
         )
         
-        # Risk categorization
+        # Risk categorization - Updated thresholds
         def get_risk_category(prob):
-            if prob >= 0.7: return 'High Risk'
-            elif prob >= 0.4: return 'Medium Risk'
-            else: return 'Low Risk'
+            if prob >= 0.7: return 'High'
+            elif prob >= 0.4: return 'Medium'
+            else: return 'Low'
         
         active_employees['Risk_Category'] = active_employees['Attrition_Probability'].apply(get_risk_category)
         
@@ -185,6 +241,7 @@ def generate_predictions(employee_df, models):
         
     except Exception as e:
         st.error(f"Error generating predictions: {str(e)}")
+        st.error(f"Available columns: {list(active_employees.columns)}")
         return pd.DataFrame()
 
 def create_interactive_risk_charts(filtered_df):
@@ -195,9 +252,9 @@ def create_interactive_risk_charts(filtered_df):
     
     # Fixed color mapping: Green for Low Risk, Red for High Risk
     color_map = {
-        'Low Risk': '#2e7d32',    # Green
-        'Medium Risk': '#f57c00', # Orange
-        'High Risk': '#d32f2f'    # Red
+        'Low': '#2e7d32',      # Green
+        'Medium': '#f57c00',   # Orange
+        'High': '#d32f2f'      # Red
     }
     
     colors = [color_map.get(label, '#gray') for label in risk_counts.index]
@@ -239,9 +296,9 @@ def create_department_risk_chart(filtered_df):
         color='Risk_Category',
         title="Risk Distribution by Department",
         color_discrete_map={
-            'High Risk': '#d32f2f',    # Red
-            'Medium Risk': '#f57c00',  # Orange
-            'Low Risk': '#2e7d32'      # Green
+            'High': '#d32f2f',    # Red
+            'Medium': '#f57c00',  # Orange
+            'Low': '#2e7d32'      # Green
         },
         hover_data=['Count']
     )
@@ -279,8 +336,8 @@ def create_timeline_chart(timeline_df):
         color='Risk_Category',
         title="Employee Departure Timeline",
         color_discrete_map={
-            'High Risk': '#d32f2f',
-            'Medium Risk': '#f57c00'
+            'High': '#d32f2f',
+            'Medium': '#f57c00'
         },
         hover_data=['Count']
     )
@@ -324,12 +381,40 @@ def main():
     # Header
     st.markdown('<div class="main-header">🚨 HR Attrition Analytics Dashboard</div>', unsafe_allow_html=True)
     
+    # Show model information if available
+    if results is not None:
+        with st.expander("📊 Model Performance Information"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("🎯 Classification Model (WHO)")
+                if 'best_classification_model' in results:
+                    st.write(f"**Best Model:** {results['best_classification_model']}")
+                if 'classification_results' in results:
+                    for model, metrics in results['classification_results'].items():
+                        if 'auc' in metrics:
+                            st.write(f"**{model} AUC:** {metrics['auc']:.3f}")
+            
+            with col2:
+                st.subheader("📅 Regression Model (WHEN)")
+                if 'best_regression_model' in results:
+                    st.write(f"**Best Model:** {results['best_regression_model']}")
+                if 'regression_results' in results:
+                    for model, metrics in results['regression_results'].items():
+                        if 'r2' in metrics:
+                            st.write(f"**{model} R²:** {metrics['r2']:.3f}")
+                        if 'mae' in metrics:
+                            st.write(f"**{model} MAE:** {metrics['mae']:.1f} days")
+    
     # Generate predictions
+    st.info("🔄 Generating predictions for active employees...")
     predictions_df = generate_predictions(employee_df, models)
     
     if predictions_df.empty:
         st.error("Unable to generate predictions. Please check your models and data.")
         return
+    
+    st.success(f"✅ Successfully generated predictions for {len(predictions_df)} active employees")
     
     # Sidebar filters
     st.sidebar.header("🎛️ Filters")
@@ -337,7 +422,7 @@ def main():
     departments = ['All Departments'] + sorted(predictions_df['Department'].unique().tolist())
     selected_dept = st.sidebar.selectbox("Filter by Department", departments)
     
-    risk_levels = ['All Risk Levels', 'High Risk', 'Medium Risk', 'Low Risk']
+    risk_levels = ['All Risk Levels', 'High', 'Medium', 'Low']
     selected_risk = st.sidebar.selectbox("Filter by Risk Level", risk_levels)
     
     time_horizons = ['All Time', 'Leaving in 30 days', 'Leaving in 60 days', 'Leaving in 90 days']
@@ -366,10 +451,10 @@ def main():
     col1, col2, col3, col4 = st.columns(4)
     
     total_active = len(filtered_df)
-    high_risk = len(filtered_df[filtered_df['Risk_Category'] == 'High Risk'])
-    medium_risk = len(filtered_df[filtered_df['Risk_Category'] == 'Medium Risk'])
+    high_risk = len(filtered_df[filtered_df['Risk_Category'] == 'High'])
+    medium_risk = len(filtered_df[filtered_df['Risk_Category'] == 'Medium'])
     urgent_cases = len(filtered_df[
-        (filtered_df['Risk_Category'] == 'High Risk') & 
+        (filtered_df['Risk_Category'] == 'High') & 
         (filtered_df['Predicted_Lead_Time_Days'] <= 30)
     ])
     
@@ -421,9 +506,9 @@ def main():
                 risk_counts = dept_data['Risk_Category'].value_counts()
                 
                 color_map = {
-                    'Low Risk': '#2e7d32',    # Green
-                    'Medium Risk': '#f57c00', # Orange
-                    'High Risk': '#d32f2f'    # Red
+                    'Low': '#2e7d32',      # Green
+                    'Medium': '#f57c00',   # Orange
+                    'High': '#d32f2f'      # Red
                 }
                 
                 colors = [color_map.get(x, '#gray') for x in risk_counts.index]
@@ -449,7 +534,7 @@ def main():
         
         with col1:
             # High risk employees
-            high_risk_employees = filtered_df[filtered_df['Risk_Category'] == 'High Risk'].copy()
+            high_risk_employees = filtered_df[filtered_df['Risk_Category'] == 'High'].copy()
             
             if len(high_risk_employees) > 0:
                 st.subheader("🔴 High Risk Employees (Immediate Action Required)")
@@ -460,7 +545,9 @@ def main():
                     'Job_Satisfaction_Score', 'Manager_Rating', 'Monthly_Salary'
                 ]
                 
-                high_risk_display = high_risk_employees[display_cols].sort_values('Attrition_Probability', ascending=False)
+                # Only include columns that exist
+                available_cols = [col for col in display_cols if col in high_risk_employees.columns]
+                high_risk_display = high_risk_employees[available_cols].sort_values('Attrition_Probability', ascending=False)
                 
                 st.dataframe(
                     high_risk_display, 
@@ -476,7 +563,7 @@ def main():
                             "Monthly Salary",
                             help="Employee's monthly salary",
                             format="$%d"
-                        )
+                        ) if 'Monthly_Salary' in available_cols else None
                     }
                 )
                 
@@ -492,7 +579,7 @@ def main():
                 st.success("✅ No high-risk employees found!")
             
             # Medium risk employees
-            medium_risk_employees = filtered_df[filtered_df['Risk_Category'] == 'Medium Risk']
+            medium_risk_employees = filtered_df[filtered_df['Risk_Category'] == 'Medium']
             
             if len(medium_risk_employees) > 0:
                 st.subheader("🟡 Medium Risk Employees (Monitor Closely)")
@@ -502,7 +589,8 @@ def main():
                     'Attrition_Probability', 'Job_Satisfaction_Score', 'Manager_Rating'
                 ]
                 
-                medium_display_data = medium_risk_employees[medium_display_cols].sort_values('Attrition_Probability', ascending=False)
+                available_medium_cols = [col for col in medium_display_cols if col in medium_risk_employees.columns]
+                medium_display_data = medium_risk_employees[available_medium_cols].sort_values('Attrition_Probability', ascending=False)
                 
                 st.write(f"**{len(medium_risk_employees)} Medium Risk Employees:**")
                 st.dataframe(
@@ -523,15 +611,15 @@ def main():
             st.subheader("📈 Quick Stats")
             
             # Average probability by risk level
-            avg_prob_high = filtered_df[filtered_df['Risk_Category'] == 'High Risk']['Attrition_Probability'].mean()
-            avg_prob_medium = filtered_df[filtered_df['Risk_Category'] == 'Medium Risk']['Attrition_Probability'].mean()
+            avg_prob_high = filtered_df[filtered_df['Risk_Category'] == 'High']['Attrition_Probability'].mean()
+            avg_prob_medium = filtered_df[filtered_df['Risk_Category'] == 'Medium']['Attrition_Probability'].mean()
             
             st.metric("Avg High Risk Prob", f"{avg_prob_high:.1%}" if not pd.isna(avg_prob_high) else "N/A")
             st.metric("Avg Medium Risk Prob", f"{avg_prob_medium:.1%}" if not pd.isna(avg_prob_medium) else "N/A")
             
             # Top department at risk
             if selected_dept == 'All Departments':
-                dept_high_risk = filtered_df[filtered_df['Risk_Category'] == 'High Risk']['Department'].value_counts()
+                dept_high_risk = filtered_df[filtered_df['Risk_Category'] == 'High']['Department'].value_counts()
                 if len(dept_high_risk) > 0:
                     st.metric("Top Risk Department", dept_high_risk.index[0])
                     st.metric("High Risk Count", dept_high_risk.iloc[0])
@@ -551,12 +639,12 @@ def main():
         
         with col2:
             # Risk level filter for timeline
-            timeline_risks = ['All Risk Levels', 'High Risk', 'Medium Risk']
+            timeline_risks = ['All Risk Levels', 'High', 'Medium']
             timeline_risk = st.selectbox("Filter by Risk Level:", timeline_risks, key="timeline_risk")
         
         # Filter timeline data
         timeline_df = predictions_df[
-            (predictions_df['Risk_Category'].isin(['High Risk', 'Medium Risk'])) &
+            (predictions_df['Risk_Category'].isin(['High', 'Medium'])) &
             (predictions_df['Predicted_Lead_Time_Days'].notna())
         ].copy()
         
@@ -601,7 +689,7 @@ def main():
             fig_timeline = create_timeline_chart(timeline_df)
             st.plotly_chart(fig_timeline, use_container_width=True)
             
-            # Timeline table - clickable Employee IDs
+            # Timeline table
             st.subheader("📋 Departure Timeline")
             st.info("💡 Click on any Employee ID below to view detailed information")
             
@@ -611,7 +699,9 @@ def main():
                 'Job_Satisfaction_Score', 'Manager_Rating'
             ]
             
-            timeline_sorted = timeline_df[timeline_display_cols].sort_values('Predicted_Lead_Time_Days')
+            # Only include columns that exist
+            available_timeline_cols = [col for col in timeline_display_cols if col in timeline_df.columns]
+            timeline_sorted = timeline_df[available_timeline_cols].sort_values('Predicted_Lead_Time_Days')
             
             # Display the table
             st.dataframe(
@@ -649,13 +739,13 @@ def main():
                 
                 if employee_data is not None:
                     st.markdown('<div class="employee-result">', unsafe_allow_html=True)
-                    st.success(f"✅ Employee Details: {employee_data['Name']}")
+                    st.success(f"✅ Employee Details: {employee_data.get('Name', 'N/A')}")
                     
                     result_col1, result_col2, result_col3 = st.columns(3)
                     
                     with result_col1:
                         st.write(f"**Employee ID:** {employee_data['Employee_ID']}")
-                        st.write(f"**Department:** {employee_data['Department']}")
+                        st.write(f"**Department:** {employee_data.get('Department', 'N/A')}")
                         st.write(f"**Risk Level:** {employee_data['Risk_Category']}")
                     
                     with result_col2:
@@ -663,7 +753,7 @@ def main():
                         st.write(f"**Days Until Departure:** {int(employee_data['Predicted_Lead_Time_Days'])}")
                     
                     with result_col3:
-                        st.write(f"**Estimated Departure:** {employee_data['Estimated_Departure_Date']}")
+                        st.write(f"**Estimated Departure:** {employee_data.get('Estimated_Departure_Date', 'N/A')}")
                         
                         # Color code based on urgency
                         days_left = employee_data['Predicted_Lead_Time_Days']
@@ -704,42 +794,42 @@ def main():
             
             if employee_data is not None:
                 # Employee details
-                st.subheader(f"📋 Employee Details: {employee_data['Name']}")
+                st.subheader(f"📋 Employee Details: {employee_data.get('Name', 'N/A')}")
                 
                 col1, col2 = st.columns(2)
                 
                 with col1:
                     st.markdown("**Basic Information**")
                     st.write(f"**ID:** {employee_data['Employee_ID']}")
-                    st.write(f"**Name:** {employee_data['Name']}")
-                    st.write(f"**Department:** {employee_data['Department']}")
-                    st.write(f"**Designation:** {employee_data['Designation']}")
-                    st.write(f"**Age:** {employee_data['Age']}")
+                    st.write(f"**Name:** {employee_data.get('Name', 'N/A')}")
+                    st.write(f"**Department:** {employee_data.get('Department', 'N/A')}")
+                    st.write(f"**Designation:** {employee_data.get('Designation', 'N/A')}")
+                    st.write(f"**Age:** {employee_data.get('Age', 'N/A')}")
                     st.write(f"**Tenure:** {employee_data.get('Tenure_Years', 'N/A')} years")
                 
                 with col2:
                     st.markdown("**Risk Assessment**")
                     
                     risk_category = employee_data['Risk_Category']
-                    if risk_category == 'High Risk':
+                    if risk_category == 'High':
                         st.markdown('<div class="urgent-card">', unsafe_allow_html=True)
-                        st.write(f"**Risk Level:** 🔴 {risk_category}")
+                        st.write(f"**Risk Level:** 🔴 {risk_category} Risk")
                         st.write(f"**Probability:** {employee_data['Attrition_Probability']:.1%}")
-                        if not pd.isna(employee_data['Estimated_Departure_Date']):
+                        if not pd.isna(employee_data.get('Estimated_Departure_Date')):
                             st.write(f"**Est. Departure:** {employee_data['Estimated_Departure_Date']}")
                             st.write(f"**Days Until Departure:** {int(employee_data['Predicted_Lead_Time_Days'])}")
                         st.markdown('</div>', unsafe_allow_html=True)
-                    elif risk_category == 'Medium Risk':
+                    elif risk_category == 'Medium':
                         st.markdown('<div class="warning-card">', unsafe_allow_html=True)
-                        st.write(f"**Risk Level:** 🟡 {risk_category}")
+                        st.write(f"**Risk Level:** 🟡 {risk_category} Risk")
                         st.write(f"**Probability:** {employee_data['Attrition_Probability']:.1%}")
-                        if not pd.isna(employee_data['Estimated_Departure_Date']):
+                        if not pd.isna(employee_data.get('Estimated_Departure_Date')):
                             st.write(f"**Est. Departure:** {employee_data['Estimated_Departure_Date']}")
                             st.write(f"**Days Until Departure:** {int(employee_data['Predicted_Lead_Time_Days'])}")
                         st.markdown('</div>', unsafe_allow_html=True)
                     else:
                         st.markdown('<div class="safe-card">', unsafe_allow_html=True)
-                        st.write(f"**Risk Level:** 🟢 {risk_category}")
+                        st.write(f"**Risk Level:** 🟢 {risk_category} Risk")
                         st.write(f"**Probability:** {employee_data['Attrition_Probability']:.1%}")
                         st.markdown('</div>', unsafe_allow_html=True)
                 
@@ -749,25 +839,29 @@ def main():
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    st.metric("Job Satisfaction", f"{employee_data['Job_Satisfaction_Score']}/10")
-                    st.metric("Manager Rating", f"{employee_data['Manager_Rating']}/10")
+                    if 'Job_Satisfaction_Score' in employee_data:
+                        st.metric("Job Satisfaction", f"{employee_data['Job_Satisfaction_Score']}/10")
+                    if 'Manager_Rating' in employee_data:
+                        st.metric("Manager Rating", f"{employee_data['Manager_Rating']}/10")
                 
                 with col2:
-                    st.metric("Market Salary Ratio", f"{employee_data['Market_Salary_Ratio']:.2f}")
-                    st.metric("Monthly Salary", f"${employee_data['Monthly_Salary']:,}")
+                    if 'Market_Salary_Ratio' in employee_data:
+                        st.metric("Market Salary Ratio", f"{employee_data['Market_Salary_Ratio']:.2f}")
+                    if 'Monthly_Salary' in employee_data:
+                        st.metric("Monthly Salary", f"${employee_data['Monthly_Salary']:,}")
                 
                 # Recommendations
-                if risk_category in ['High Risk', 'Medium Risk']:
+                if risk_category in ['High', 'Medium']:
                     st.subheader("💡 Recommended Actions")
                     
                     recommendations = []
-                    if employee_data['Job_Satisfaction_Score'] < 6:
+                    if employee_data.get('Job_Satisfaction_Score', 10) < 6:
                         recommendations.append("🗣️ Schedule one-on-one satisfaction discussion")
-                    if employee_data['Market_Salary_Ratio'] < 0.9:
+                    if employee_data.get('Market_Salary_Ratio', 1.0) < 0.9:
                         recommendations.append("💰 Review and potentially adjust compensation package")
-                    if employee_data['Manager_Rating'] < 6:
+                    if employee_data.get('Manager_Rating', 10) < 6:
                         recommendations.append("👥 Assess manager-employee relationship dynamics")
-                    if not pd.isna(employee_data['Predicted_Lead_Time_Days']) and employee_data['Predicted_Lead_Time_Days'] <= 30:
+                    if not pd.isna(employee_data.get('Predicted_Lead_Time_Days')) and employee_data.get('Predicted_Lead_Time_Days', 365) <= 30:
                         recommendations.append("⚡ URGENT: Schedule immediate retention meeting")
                     
                     if recommendations:
@@ -789,68 +883,91 @@ def main():
         
         with col1:
             # Job satisfaction analysis
-            fig_satisfaction = px.box(
-                filtered_df, 
-                x='Risk_Category', 
-                y='Job_Satisfaction_Score',
-                title="Job Satisfaction Distribution by Risk Level",
-                color='Risk_Category',
-                color_discrete_map={
-                    'High Risk': '#d32f2f',
-                    'Medium Risk': '#f57c00', 
-                    'Low Risk': '#2e7d32'
-                }
-            )
-            
-            fig_satisfaction.update_layout(
-                title={
-                    'x': 0.5,
-                    'xanchor': 'center',
-                    'font': {'size': 16}
-                },
-                height=400
-            )
-            
-            st.plotly_chart(fig_satisfaction, use_container_width=True)
+            if 'Job_Satisfaction_Score' in filtered_df.columns:
+                fig_satisfaction = px.box(
+                    filtered_df, 
+                    x='Risk_Category', 
+                    y='Job_Satisfaction_Score',
+                    title="Job Satisfaction Distribution by Risk Level",
+                    color='Risk_Category',
+                    color_discrete_map={
+                        'High': '#d32f2f',
+                        'Medium': '#f57c00', 
+                        'Low': '#2e7d32'
+                    }
+                )
+                
+                fig_satisfaction.update_layout(
+                    title={
+                        'x': 0.5,
+                        'xanchor': 'center',
+                        'font': {'size': 16}
+                    },
+                    height=400
+                )
+                
+                st.plotly_chart(fig_satisfaction, use_container_width=True)
+            else:
+                st.info("Job Satisfaction data not available")
         
         with col2:
             # Salary ratio analysis
-            fig_salary = px.box(
-                filtered_df, 
-                x='Risk_Category', 
-                y='Market_Salary_Ratio',
-                title="Market Salary Ratio by Risk Level",
-                color='Risk_Category',
-                color_discrete_map={
-                    'High Risk': '#d32f2f',
-                    'Medium Risk': '#f57c00', 
-                    'Low Risk': '#2e7d32'
-                }
-            )
-            
-            fig_salary.update_layout(
-                title={
-                    'x': 0.5,
-                    'xanchor': 'center',
-                    'font': {'size': 16}
-                },
-                height=400
-            )
-            
-            st.plotly_chart(fig_salary, use_container_width=True)
+            if 'Market_Salary_Ratio' in filtered_df.columns:
+                fig_salary = px.box(
+                    filtered_df, 
+                    x='Risk_Category', 
+                    y='Market_Salary_Ratio',
+                    title="Market Salary Ratio by Risk Level",
+                    color='Risk_Category',
+                    color_discrete_map={
+                        'High': '#d32f2f',
+                        'Medium': '#f57c00', 
+                        'Low': '#2e7d32'
+                    }
+                )
+                
+                fig_salary.update_layout(
+                    title={
+                        'x': 0.5,
+                        'xanchor': 'center',
+                        'font': {'size': 16}
+                    },
+                    height=400
+                )
+                
+                st.plotly_chart(fig_salary, use_container_width=True)
+            else:
+                st.info("Market Salary Ratio data not available")
         
         # Department-wise analysis
         st.subheader("🏢 Department-wise Risk Analysis")
         
-        dept_analysis = filtered_df.groupby('Department').agg({
+        # Create department analysis with available columns only
+        analysis_cols = {
             'Employee_ID': 'count',
-            'Attrition_Probability': 'mean',
-            'Job_Satisfaction_Score': 'mean',
-            'Manager_Rating': 'mean',
-            'Market_Salary_Ratio': 'mean'
-        }).round(3)
+            'Attrition_Probability': 'mean'
+        }
         
-        dept_analysis.columns = ['Total Employees', 'Avg Attrition Prob', 'Avg Job Satisfaction', 'Avg Manager Rating', 'Avg Salary Ratio']
+        # Add optional columns if they exist
+        if 'Job_Satisfaction_Score' in filtered_df.columns:
+            analysis_cols['Job_Satisfaction_Score'] = 'mean'
+        if 'Manager_Rating' in filtered_df.columns:
+            analysis_cols['Manager_Rating'] = 'mean'
+        if 'Market_Salary_Ratio' in filtered_df.columns:
+            analysis_cols['Market_Salary_Ratio'] = 'mean'
+        
+        dept_analysis = filtered_df.groupby('Department').agg(analysis_cols).round(3)
+        
+        # Rename columns
+        new_column_names = ['Total Employees', 'Avg Attrition Prob']
+        if 'Job_Satisfaction_Score' in analysis_cols:
+            new_column_names.append('Avg Job Satisfaction')
+        if 'Manager_Rating' in analysis_cols:
+            new_column_names.append('Avg Manager Rating')
+        if 'Market_Salary_Ratio' in analysis_cols:
+            new_column_names.append('Avg Salary Ratio')
+        
+        dept_analysis.columns = new_column_names
         dept_analysis = dept_analysis.sort_values('Avg Attrition Prob', ascending=False)
         
         st.dataframe(
@@ -866,7 +983,7 @@ def main():
                     "Avg Market Salary Ratio",
                     help="Average market salary ratio for department",
                     format="%.2f"
-                )
+                ) if 'Avg Salary Ratio' in new_column_names else None
             }
         )
         
@@ -876,15 +993,18 @@ def main():
         insights = []
         
         # Calculate insights
-        high_risk_pct = (len(filtered_df[filtered_df['Risk_Category'] == 'High Risk']) / len(filtered_df) * 100) if len(filtered_df) > 0 else 0
-        avg_satisfaction_high_risk = filtered_df[filtered_df['Risk_Category'] == 'High Risk']['Job_Satisfaction_Score'].mean()
-        avg_satisfaction_low_risk = filtered_df[filtered_df['Risk_Category'] == 'Low Risk']['Job_Satisfaction_Score'].mean()
+        high_risk_pct = (len(filtered_df[filtered_df['Risk_Category'] == 'High']) / len(filtered_df) * 100) if len(filtered_df) > 0 else 0
         
         insights.append(f"📊 **{high_risk_pct:.1f}%** of active employees are at high risk of attrition")
         
-        if not pd.isna(avg_satisfaction_high_risk) and not pd.isna(avg_satisfaction_low_risk):
-            satisfaction_diff = avg_satisfaction_low_risk - avg_satisfaction_high_risk
-            insights.append(f"😟 High-risk employees have **{satisfaction_diff:.1f} points lower** job satisfaction on average")
+        # Job satisfaction comparison if available
+        if 'Job_Satisfaction_Score' in filtered_df.columns:
+            avg_satisfaction_high_risk = filtered_df[filtered_df['Risk_Category'] == 'High']['Job_Satisfaction_Score'].mean()
+            avg_satisfaction_low_risk = filtered_df[filtered_df['Risk_Category'] == 'Low']['Job_Satisfaction_Score'].mean()
+            
+            if not pd.isna(avg_satisfaction_high_risk) and not pd.isna(avg_satisfaction_low_risk):
+                satisfaction_diff = avg_satisfaction_low_risk - avg_satisfaction_high_risk
+                insights.append(f"😟 High-risk employees have **{satisfaction_diff:.1f} points lower** job satisfaction on average")
         
         # Department with highest risk
         if len(filtered_df) > 0:
@@ -894,15 +1014,55 @@ def main():
         
         # Urgent cases
         urgent_count = len(filtered_df[
-            (filtered_df['Risk_Category'] == 'High Risk') & 
+            (filtered_df['Risk_Category'] == 'High') & 
             (filtered_df['Predicted_Lead_Time_Days'] <= 30)
         ])
         
         if urgent_count > 0:
             insights.append(f"🚨 **{urgent_count} employees** require immediate attention (leaving within 30 days)")
         
+        # Prediction coverage
+        with_predictions = len(filtered_df[filtered_df['Predicted_Lead_Time_Days'].notna()])
+        coverage_pct = (with_predictions / len(filtered_df) * 100) if len(filtered_df) > 0 else 0
+        insights.append(f"📈 **{coverage_pct:.1f}%** of employees have departure timeline predictions")
+        
         for insight in insights:
             st.markdown(insight)
+        
+        # Model performance summary
+        if results is not None:
+            st.subheader("🤖 Model Performance Summary")
+            
+            perf_col1, perf_col2 = st.columns(2)
+            
+            with perf_col1:
+                st.markdown("**Classification Model (WHO)**")
+                if 'classification_results' in results:
+                    for model, metrics in results['classification_results'].items():
+                        if 'auc' in metrics:
+                            auc_score = metrics['auc']
+                            if auc_score >= 0.9:
+                                st.success(f"✅ {model}: Excellent AUC ({auc_score:.3f})")
+                            elif auc_score >= 0.8:
+                                st.info(f"ℹ️ {model}: Good AUC ({auc_score:.3f})")
+                            else:
+                                st.warning(f"⚠️ {model}: Fair AUC ({auc_score:.3f})")
+            
+            with perf_col2:
+                st.markdown("**Regression Model (WHEN)**")
+                if 'regression_results' in results:
+                    for model, metrics in results['regression_results'].items():
+                        if 'r2' in metrics:
+                            r2_score = metrics['r2']
+                            if r2_score >= 0.3:
+                                st.success(f"✅ {model}: Good R² ({r2_score:.3f})")
+                            elif r2_score >= 0.1:
+                                st.info(f"ℹ️ {model}: Fair R² ({r2_score:.3f})")
+                            else:
+                                st.warning(f"⚠️ {model}: Low R² ({r2_score:.3f})")
+                        
+                        if 'mae' in metrics:
+                            st.write(f"📊 MAE: {metrics['mae']:.1f} days")
 
 if __name__ == "__main__":
     main()
