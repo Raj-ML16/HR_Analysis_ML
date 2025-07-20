@@ -292,7 +292,7 @@ def estimate_departure_timeline(attrition_prob, employee_id):
         return max(180, min(365, base_days + variation))
 
 def export_predictions_to_excel(models_dict, employee_df):
-    """Export WHO and WHEN predictions to Excel for HR team"""
+    """Export WHO and WHEN predictions to Excel for HR team - UNIFIED THRESHOLDS"""
     
     print("Making predictions for active employees...")
     
@@ -316,30 +316,44 @@ def export_predictions_to_excel(models_dict, employee_df):
     print("📅 Making WHEN predictions (departure timeline)...")
     lead_times = np.full(len(active_employees), np.nan)
     
-    # Lower threshold: Medium+ risk employees (>= 0.4) get predictions
-    medium_high_risk_mask = attrition_prob >= 0.4
+    # ===================================================
+    # UNIFIED THRESHOLDS - Same for printing AND categorization
+    # ===================================================
+    HIGH_THRESHOLD = 0.7    # 70%
+    MEDIUM_THRESHOLD = 0.4  # 40%
+    LOW_THRESHOLD = 0.2     # 20%
     
-    if np.any(medium_high_risk_mask):
-        # Use ML model for high-risk employees (>= 0.5)
-        high_risk_indices = np.where((attrition_prob >= 0.5) & medium_high_risk_mask)[0]
-        if len(high_risk_indices) > 0:
-            ml_predictions = models_dict['best_regressor'].predict(X.iloc[high_risk_indices])
-            lead_times[high_risk_indices] = np.round(ml_predictions).astype(int)
-            print(f"  🔴 {len(high_risk_indices)} high-risk employees: ML predictions")
-        
-        # Use risk-based estimation for medium-risk employees (0.4-0.5)
-        medium_risk_indices = np.where((attrition_prob >= 0.4) & (attrition_prob < 0.5))[0]
+    # High Risk (>= 70%): Use ML model
+    high_risk_mask = attrition_prob >= HIGH_THRESHOLD
+    high_risk_count = np.sum(high_risk_mask)
+    
+    if high_risk_count > 0:
+        high_risk_indices = np.where(high_risk_mask)[0]
+        ml_predictions = models_dict['best_regressor'].predict(X.iloc[high_risk_indices])
+        lead_times[high_risk_indices] = np.round(ml_predictions).astype(int)
+        print(f"  🔴 {high_risk_count} high-risk employees (>= 70%): ML predictions")
+    
+    # Medium Risk (40-70%): Rule-based estimation
+    medium_risk_mask = (attrition_prob >= MEDIUM_THRESHOLD) & (attrition_prob < HIGH_THRESHOLD)
+    medium_risk_count = np.sum(medium_risk_mask)
+    
+    if medium_risk_count > 0:
+        medium_risk_indices = np.where(medium_risk_mask)[0]
         for idx in medium_risk_indices:
             employee_id = active_employees.iloc[idx]['Employee_ID']
             lead_times[idx] = estimate_departure_timeline(attrition_prob[idx], employee_id)
-        print(f"  🟡 {len(medium_risk_indices)} medium-risk employees: Risk-based estimates")
+        print(f"  🟡 {medium_risk_count} medium-risk employees (40-70%): Risk-based estimates")
     
-    # For low-risk employees who might still have some probability
-    low_risk_indices = np.where((attrition_prob >= 0.2) & (attrition_prob < 0.4))[0]
-    for idx in low_risk_indices:
-        employee_id = active_employees.iloc[idx]['Employee_ID']
-        lead_times[idx] = estimate_departure_timeline(attrition_prob[idx], employee_id)
-    print(f"  🟢 {len(low_risk_indices)} low-risk employees: Conservative estimates")
+    # Low Risk (20-40%): Conservative estimation
+    low_risk_mask = (attrition_prob >= LOW_THRESHOLD) & (attrition_prob < MEDIUM_THRESHOLD)
+    low_risk_count = np.sum(low_risk_mask)
+    
+    if low_risk_count > 0:
+        low_risk_indices = np.where(low_risk_mask)[0]
+        for idx in low_risk_indices:
+            employee_id = active_employees.iloc[idx]['Employee_ID']
+            lead_times[idx] = estimate_departure_timeline(attrition_prob[idx], employee_id)
+        print(f"  🟢 {low_risk_count} low-risk employees (20-40%): Conservative estimates")
     
     # Add predictions to dataframe
     active_employees['Attrition_Probability'] = attrition_prob.round(3)
@@ -352,13 +366,16 @@ def export_predictions_to_excel(models_dict, employee_df):
         if not pd.isna(row['Predicted_Lead_Time_Days']) else None, axis=1
     )
     
-    # Risk categorization
+    # Risk categorization - SAME THRESHOLDS
     def get_risk_category(prob):
-        if prob >= 0.7: return 'High'
-        elif prob >= 0.4: return 'Medium'
+        if prob >= HIGH_THRESHOLD: return 'High'      # 70%
+        elif prob >= MEDIUM_THRESHOLD: return 'Medium' # 40%
         else: return 'Low'
     
     active_employees['Risk_Category'] = active_employees['Attrition_Probability'].apply(get_risk_category)
+    
+    # Rest of the function stays the same...
+    # (Excel creation, display results, etc.)
     
     # Create Excel file
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
