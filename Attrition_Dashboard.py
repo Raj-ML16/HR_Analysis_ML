@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 
 # Page config
 st.set_page_config(
-    page_title="HR Attrition Dashboard",
+    page_title="HR Attrition Dashboard - FIXED",
     page_icon="🚨",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -57,40 +57,40 @@ st.markdown("""
 
 @st.cache_data
 def load_data():
-    """Load employee data - Updated to match new pipeline"""
+    """Load employee data - FIXED to match new pipeline"""
     try:
         employee_df = pd.read_csv('employee_data_processed.csv')
         try:
-            # Try new results file first, then fallback to old
-            with open('model_results_fixed.json', 'r') as f:
+            # Try FIXED results file first, then fallback
+            with open('model_results_enhanced.json', 'r') as f:
                 results = json.load(f)
         except FileNotFoundError:
             try:
-                with open('model_results.json', 'r') as f:
+                with open('model_results_enhanced.json', 'r') as f:
                     results = json.load(f)
             except FileNotFoundError:
                 results = None
         return employee_df, results
     except FileNotFoundError:
-        st.error("❌ Data files not found. Please run the modeling pipeline first.")
+        st.error("❌ Data files not found. Please run the FIXED modeling pipeline first.")
         return None, None
 
 @st.cache_resource
 def load_models():
-    """Load trained models - Updated to match new pipeline"""
+    """Load trained models - FIXED to match new pipeline"""
     try:
-        # Try new models file first, then fallback to old
+        # Try FIXED models file first, then fallback
         try:
-            models = joblib.load('attrition_models_fixed.pkl')
+            models = joblib.load('attrition_models_enhanced.pkl')
         except FileNotFoundError:
-            models = joblib.load('attrition_models.pkl')
+            models = joblib.load('attrition_models_enhanced.pkl')
         return models
     except FileNotFoundError:
-        st.error("❌ Models not found. Please run the modeling pipeline first.")
+        st.error("❌ Models not found. Please run the FIXED modeling pipeline first.")
         return None
 
 def prepare_features_for_prediction(df, models):
-    """Prepare features with proper encoding - Updated for new pipeline"""
+    """Prepare features with proper encoding - FIXED to match new pipeline"""
     df_processed = df.copy()
     
     # Handle missing values
@@ -135,6 +135,8 @@ def prepare_features_for_prediction(df, models):
                 original_col = 'Project_Workload'
             elif col == 'worklife':
                 original_col = 'Work_Life_Balance'
+            elif col == 'notice_type':
+                original_col = 'Notice_Period_Type'
             else:
                 continue
             
@@ -158,27 +160,8 @@ def prepare_features_for_prediction(df, models):
     
     return df_processed[feature_cols]
 
-def estimate_departure_timeline(attrition_prob, employee_id):
-    """Estimate departure timeline - Same as in new pipeline"""
-    # Use employee_id for unique seed to get different results per employee
-    seed_value = hash(str(employee_id)) % 10000
-    np.random.seed(seed_value)
-    
-    if attrition_prob >= 0.7:    # High risk
-        base_days = 60  # 2 months average
-        variation = np.random.randint(-20, 21)  # ±20 days variation
-        return max(30, min(90, base_days + variation))
-    elif attrition_prob >= 0.4:  # Medium risk  
-        base_days = 135  # 4.5 months average
-        variation = np.random.randint(-30, 31)  # ±30 days variation
-        return max(90, min(180, base_days + variation))
-    else:                        # Low risk
-        base_days = 270  # 9 months average
-        variation = np.random.randint(-60, 61)  # ±60 days variation
-        return max(180, min(365, base_days + variation))
-
 def generate_predictions(employee_df, models):
-    """Generate predictions for active employees - Updated to match new pipeline logic"""
+    """Generate predictions for active employees - FIXED to match new pipeline exactly"""
     active_employees = employee_df[employee_df['Status'] == 'Active'].copy()
     
     if len(active_employees) == 0 or models is None:
@@ -193,49 +176,57 @@ def generate_predictions(employee_df, models):
         # WHO predictions
         attrition_prob = models['best_classifier'].predict_proba(X)[:, 1]
         
-        # WHEN predictions - Updated to match new pipeline logic
-        lead_times = np.full(len(active_employees), np.nan)
+        # WHEN predictions - FIXED to match the exact pipeline logic
+        # Use ML model to predict notice period for all employees
+        predicted_notice_periods = models['best_regressor'].predict(X)
         
-        # Lower threshold: Medium+ risk employees (>= 0.4) get predictions
-        medium_high_risk_mask = attrition_prob >= 0.4
-        
-        if np.any(medium_high_risk_mask):
-            # Use ML model for high-risk employees (>= 0.5) - ROUND TO INTEGERS
-            high_risk_indices = np.where((attrition_prob >= 0.5) & medium_high_risk_mask)[0]
-            if len(high_risk_indices) > 0:
-                ml_predictions = models['best_regressor'].predict(X.iloc[high_risk_indices])
-                lead_times[high_risk_indices] = np.round(ml_predictions).astype(int)
-            
-            # Use risk-based estimation for medium-risk employees (0.4-0.5)
-            medium_risk_indices = np.where((attrition_prob >= 0.4) & (attrition_prob < 0.5))[0]
-            for idx in medium_risk_indices:
-                employee_id = active_employees.iloc[idx]['Employee_ID']
-                lead_times[idx] = estimate_departure_timeline(attrition_prob[idx], employee_id)
-        
-        # For low-risk employees who might still have some probability
-        low_risk_indices = np.where((attrition_prob >= 0.2) & (attrition_prob < 0.4))[0]
-        for idx in low_risk_indices:
-            employee_id = active_employees.iloc[idx]['Employee_ID']
-            lead_times[idx] = estimate_departure_timeline(attrition_prob[idx], employee_id)
+        # Ensure realistic bounds (same as in FIXED pipeline)
+        predicted_notice_periods = np.clip(predicted_notice_periods, 7, 180)  # 1 week to 6 months
         
         # Add predictions to dataframe
         active_employees['Attrition_Probability'] = attrition_prob.round(3)
-        active_employees['Predicted_Lead_Time_Days'] = lead_times
+        active_employees['Predicted_Notice_Period_Days'] = predicted_notice_periods.round().astype(int)
         
-        # Calculate departure date - For ALL employees with lead times
+        # Calculate REALISTIC departure timeline (same as FIXED pipeline)
         today = datetime.now()
-        active_employees['Estimated_Departure_Date'] = active_employees.apply(
-            lambda row: (today + timedelta(days=int(row['Predicted_Lead_Time_Days']))).strftime('%Y-%m-%d') 
-            if not pd.isna(row['Predicted_Lead_Time_Days']) else None, axis=1
-        )
         
-        # Risk categorization - Updated thresholds
+        # Estimate when they might submit resignation (based on risk level)
+        resignation_timeline_days = []
+        for prob in attrition_prob:
+            if prob >= 0.7:  # High risk
+                days_to_resignation = np.random.randint(30, 90)  # 1-3 months
+            elif prob >= 0.4:  # Medium risk  
+                days_to_resignation = np.random.randint(90, 180)  # 3-6 months
+            else:  # Low risk
+                days_to_resignation = np.random.randint(180, 365)  # 6-12 months
+            resignation_timeline_days.append(days_to_resignation)
+        
+        active_employees['Estimated_Resignation_Date'] = [
+            (today + timedelta(days=int(days))).strftime('%Y-%m-%d') 
+            for days in resignation_timeline_days
+        ]
+        
+        # Calculate final departure date (resignation + notice period)
+        active_employees['Estimated_Departure_Date'] = [
+            (datetime.strptime(resign_date, '%Y-%m-%d') + timedelta(days=int(notice_days))).strftime('%Y-%m-%d')
+            for resign_date, notice_days in zip(active_employees['Estimated_Resignation_Date'], 
+                                              active_employees['Predicted_Notice_Period_Days'])
+        ]
+        
+        # Risk categorization (same as FIXED pipeline)
         def get_risk_category(prob):
             if prob >= 0.7: return 'High'
             elif prob >= 0.4: return 'Medium'
             else: return 'Low'
         
         active_employees['Risk_Category'] = active_employees['Attrition_Probability'].apply(get_risk_category)
+        
+        # For dashboard compatibility, also create Predicted_Lead_Time_Days 
+        # This represents total time until departure (resignation timeline + notice period)
+        active_employees['Predicted_Lead_Time_Days'] = [
+            days_to_resign + notice_days 
+            for days_to_resign, notice_days in zip(resignation_timeline_days, predicted_notice_periods)
+        ]
         
         return active_employees
         
@@ -319,12 +310,12 @@ def create_department_risk_chart(filtered_df):
     return fig_dept
 
 def create_timeline_chart(timeline_df):
-    """Create interactive timeline visualization"""
-    # Create bins for timeline
+    """Create interactive timeline visualization - FIXED"""
+    # Create bins for timeline (updated for FIXED approach)
     timeline_df['Timeline_Bucket'] = pd.cut(
         timeline_df['Predicted_Lead_Time_Days'], 
-        bins=[0, 30, 60, 90, 180, float('inf')],
-        labels=['0-30 days', '31-60 days', '61-90 days', '91-180 days', '180+ days']
+        bins=[0, 60, 120, 180, 365, float('inf')],
+        labels=['0-60 days', '61-120 days', '121-180 days', '181-365 days', '365+ days']
     )
     
     bucket_counts = timeline_df.groupby(['Timeline_Bucket', 'Risk_Category']).size().reset_index(name='Count')
@@ -334,7 +325,7 @@ def create_timeline_chart(timeline_df):
         x='Timeline_Bucket', 
         y='Count', 
         color='Risk_Category',
-        title="Employee Departure Timeline",
+        title="Employee Departure Timeline (FIXED: Resignation + Notice Period)",
         color_discrete_map={
             'High': '#d32f2f',
             'Medium': '#f57c00'
@@ -344,7 +335,7 @@ def create_timeline_chart(timeline_df):
     
     fig_timeline.update_layout(
         title={
-            'text': "Employee Departure Timeline",
+            'text': "Employee Departure Timeline (FIXED: Resignation + Notice Period)",
             'x': 0.5,
             'xanchor': 'center',
             'font': {'size': 18, 'color': '#1f77b4'}
@@ -379,11 +370,11 @@ def main():
         return
     
     # Header
-    st.markdown('<div class="main-header">🚨 HR Attrition Analytics Dashboard</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">🚨 HR Attrition Analytics Dashboard - FIXED</div>', unsafe_allow_html=True)
     
     # Show model information if available
     if results is not None:
-        with st.expander("📊 Model Performance Information"):
+        with st.expander("📊 FIXED Model Performance Information"):
             col1, col2 = st.columns(2)
             
             with col1:
@@ -394,9 +385,11 @@ def main():
                     for model, metrics in results['classification_results'].items():
                         if 'auc' in metrics:
                             st.write(f"**{model} AUC:** {metrics['auc']:.3f}")
+                if 'approach' in results:
+                    st.info(f"**Approach:** {results['approach']}")
             
             with col2:
-                st.subheader("📅 Regression Model (WHEN)")
+                st.subheader("📅 Regression Model (WHEN - Notice Period)")
                 if 'best_regression_model' in results:
                     st.write(f"**Best Model:** {results['best_regression_model']}")
                 if 'regression_results' in results:
@@ -405,16 +398,17 @@ def main():
                             st.write(f"**{model} R²:** {metrics['r2']:.3f}")
                         if 'mae' in metrics:
                             st.write(f"**{model} MAE:** {metrics['mae']:.1f} days")
+                st.info("**FIXED:** Predicts realistic notice periods based on role/department")
     
     # Generate predictions
-    st.info("🔄 Generating predictions for active employees...")
+    st.info("🔄 Generating FIXED predictions for active employees...")
     predictions_df = generate_predictions(employee_df, models)
     
     if predictions_df.empty:
         st.error("Unable to generate predictions. Please check your models and data.")
         return
     
-    st.success(f"✅ Successfully generated predictions for {len(predictions_df)} active employees")
+    st.success(f"✅ Successfully generated FIXED predictions for {len(predictions_df)} active employees")
     
     # Sidebar filters
     st.sidebar.header("🎛️ Filters")
@@ -425,7 +419,7 @@ def main():
     risk_levels = ['All Risk Levels', 'High', 'Medium', 'Low']
     selected_risk = st.sidebar.selectbox("Filter by Risk Level", risk_levels)
     
-    time_horizons = ['All Time', 'Leaving in 30 days', 'Leaving in 60 days', 'Leaving in 90 days']
+    time_horizons = ['All Time', 'Leaving in 60 days', 'Leaving in 120 days', 'Leaving in 180 days']
     selected_time = st.sidebar.selectbox("Filter by Timeline", time_horizons)
     
     # Apply filters
@@ -438,7 +432,7 @@ def main():
         filtered_df = filtered_df[filtered_df['Risk_Category'] == selected_risk]
     
     if selected_time != 'All Time':
-        days_filter = {'Leaving in 30 days': 30, 'Leaving in 60 days': 60, 'Leaving in 90 days': 90}
+        days_filter = {'Leaving in 60 days': 60, 'Leaving in 120 days': 120, 'Leaving in 180 days': 180}
         max_days = days_filter[selected_time]
         filtered_df = filtered_df[
             (filtered_df['Predicted_Lead_Time_Days'] <= max_days) & 
@@ -455,7 +449,7 @@ def main():
     medium_risk = len(filtered_df[filtered_df['Risk_Category'] == 'Medium'])
     urgent_cases = len(filtered_df[
         (filtered_df['Risk_Category'] == 'High') & 
-        (filtered_df['Predicted_Lead_Time_Days'] <= 30)
+        (filtered_df['Predicted_Lead_Time_Days'] <= 60)  # FIXED: Updated to 60 days for realistic timeline
     ])
     
     with col1:
@@ -468,13 +462,13 @@ def main():
         st.metric("Medium Risk Employees", medium_risk, delta=f"{medium_risk/total_active*100:.1f}%" if total_active > 0 else "0%")
     
     with col4:
-        st.metric("🚨 Leaving in 30 Days", urgent_cases)
+        st.metric("🚨 Leaving in 60 Days", urgent_cases)  # FIXED: Updated to 60 days
     
     # Alert for urgent cases
     if urgent_cases > 0:
         st.markdown('<div class="urgent-card">', unsafe_allow_html=True)
         st.markdown(f"### 🚨 URGENT ACTION REQUIRED")
-        st.markdown(f"**{urgent_cases} high-risk employees** may leave within 30 days!")
+        st.markdown(f"**{urgent_cases} high-risk employees** may leave within 60 days!")
         st.markdown('</div>', unsafe_allow_html=True)
     
     # Main tabs
@@ -541,7 +535,7 @@ def main():
                 
                 display_cols = [
                     'Employee_ID', 'Name', 'Department', 'Designation',
-                    'Attrition_Probability', 'Estimated_Departure_Date',
+                    'Attrition_Probability', 'Estimated_Departure_Date', 'Predicted_Notice_Period_Days',
                     'Job_Satisfaction_Score', 'Manager_Rating', 'Monthly_Salary'
                 ]
                 
@@ -559,6 +553,11 @@ def main():
                             help="Probability of employee leaving",
                             format="%.1%"
                         ),
+                        "Predicted_Notice_Period_Days": st.column_config.NumberColumn(
+                            "Notice Period (Days)",
+                            help="Predicted notice period length",
+                            format="%.0f"
+                        ),
                         "Monthly_Salary": st.column_config.NumberColumn(
                             "Monthly Salary",
                             help="Employee's monthly salary",
@@ -572,7 +571,7 @@ def main():
                 st.download_button(
                     label="📥 Download High Risk List",
                     data=csv,
-                    file_name=f'high_risk_employees_{datetime.now().strftime("%Y%m%d")}.csv',
+                    file_name=f'high_risk_employees_FIXED_{datetime.now().strftime("%Y%m%d")}.csv',
                     mime='text/csv'
                 )
             else:
@@ -586,7 +585,7 @@ def main():
                 
                 medium_display_cols = [
                     'Employee_ID', 'Name', 'Department', 'Designation',
-                    'Attrition_Probability', 'Job_Satisfaction_Score', 'Manager_Rating'
+                    'Attrition_Probability', 'Predicted_Notice_Period_Days', 'Job_Satisfaction_Score', 'Manager_Rating'
                 ]
                 
                 available_medium_cols = [col for col in medium_display_cols if col in medium_risk_employees.columns]
@@ -602,6 +601,11 @@ def main():
                             "Attrition Probability",
                             help="Probability of employee leaving",
                             format="%.1%"
+                        ),
+                        "Predicted_Notice_Period_Days": st.column_config.NumberColumn(
+                            "Notice Period (Days)",
+                            help="Predicted notice period length",
+                            format="%.0f"
                         )
                     }
                 )
@@ -617,6 +621,14 @@ def main():
             st.metric("Avg High Risk Prob", f"{avg_prob_high:.1%}" if not pd.isna(avg_prob_high) else "N/A")
             st.metric("Avg Medium Risk Prob", f"{avg_prob_medium:.1%}" if not pd.isna(avg_prob_medium) else "N/A")
             
+            # FIXED: Notice period stats
+            if 'Predicted_Notice_Period_Days' in filtered_df.columns:
+                avg_notice_high = filtered_df[filtered_df['Risk_Category'] == 'High']['Predicted_Notice_Period_Days'].mean()
+                avg_notice_medium = filtered_df[filtered_df['Risk_Category'] == 'Medium']['Predicted_Notice_Period_Days'].mean()
+                
+                st.metric("Avg High Risk Notice", f"{avg_notice_high:.0f} days" if not pd.isna(avg_notice_high) else "N/A")
+                st.metric("Avg Medium Risk Notice", f"{avg_notice_medium:.0f} days" if not pd.isna(avg_notice_medium) else "N/A")
+            
             # Top department at risk
             if selected_dept == 'All Departments':
                 dept_high_risk = filtered_df[filtered_df['Risk_Category'] == 'High']['Department'].value_counts()
@@ -625,7 +637,7 @@ def main():
                     st.metric("High Risk Count", dept_high_risk.iloc[0])
     
     with tab2:
-        st.header("📅 WHEN are they Leaving - Timeline View")
+        st.header("📅 WHEN are they Leaving - FIXED Timeline View")
         
         # Simple filters for departure timeline
         st.subheader("🎛️ Timeline Filters")
@@ -655,47 +667,50 @@ def main():
             timeline_df = timeline_df[timeline_df['Risk_Category'] == timeline_risk]
         
         if len(timeline_df) > 0:
-            # Timeline categories
-            st.subheader("📊 Departure Timeline Overview")
+            # Timeline categories (FIXED for realistic timelines)
+            st.subheader("📊 FIXED Departure Timeline Overview")
             
             col1, col2, col3, col4 = st.columns(4)
             
-            next_30 = len(timeline_df[timeline_df['Predicted_Lead_Time_Days'] <= 30])
-            next_60 = len(timeline_df[(timeline_df['Predicted_Lead_Time_Days'] > 30) & (timeline_df['Predicted_Lead_Time_Days'] <= 60)])
-            next_90 = len(timeline_df[(timeline_df['Predicted_Lead_Time_Days'] > 60) & (timeline_df['Predicted_Lead_Time_Days'] <= 90)])
-            beyond_90 = len(timeline_df[timeline_df['Predicted_Lead_Time_Days'] > 90])
+            next_60 = len(timeline_df[timeline_df['Predicted_Lead_Time_Days'] <= 60])
+            next_120 = len(timeline_df[(timeline_df['Predicted_Lead_Time_Days'] > 60) & (timeline_df['Predicted_Lead_Time_Days'] <= 120)])
+            next_180 = len(timeline_df[(timeline_df['Predicted_Lead_Time_Days'] > 120) & (timeline_df['Predicted_Lead_Time_Days'] <= 180)])
+            beyond_180 = len(timeline_df[timeline_df['Predicted_Lead_Time_Days'] > 180])
             
             with col1:
                 st.markdown('<div class="urgent-card">', unsafe_allow_html=True)
-                st.metric("Next 30 Days", next_30)
+                st.metric("Next 60 Days", next_60)
                 st.markdown('</div>', unsafe_allow_html=True)
             
             with col2:
                 st.markdown('<div class="warning-card">', unsafe_allow_html=True)
-                st.metric("31-60 Days", next_60)
+                st.metric("61-120 Days", next_120)
                 st.markdown('</div>', unsafe_allow_html=True)
             
             with col3:
                 st.markdown('<div class="warning-card">', unsafe_allow_html=True)
-                st.metric("61-90 Days", next_90)
+                st.metric("121-180 Days", next_180)
                 st.markdown('</div>', unsafe_allow_html=True)
             
             with col4:
                 st.markdown('<div class="safe-card">', unsafe_allow_html=True)
-                st.metric("Beyond 90 Days", beyond_90)
+                st.metric("Beyond 180 Days", beyond_180)
                 st.markdown('</div>', unsafe_allow_html=True)
             
             # Interactive timeline visualization
             fig_timeline = create_timeline_chart(timeline_df)
             st.plotly_chart(fig_timeline, use_container_width=True)
             
+            # FIXED: Enhanced timeline explanation
+            st.info("💡 **FIXED Timeline**: Shows total time until departure = resignation timeline + notice period")
+            
             # Timeline table
-            st.subheader("📋 Departure Timeline")
+            st.subheader("📋 FIXED Departure Timeline")
             st.info("💡 Click on any Employee ID below to view detailed information")
             
             timeline_display_cols = [
                 'Employee_ID', 'Name', 'Department', 'Risk_Category',
-                'Predicted_Lead_Time_Days', 'Estimated_Departure_Date',
+                'Predicted_Lead_Time_Days', 'Predicted_Notice_Period_Days', 'Estimated_Departure_Date',
                 'Job_Satisfaction_Score', 'Manager_Rating'
             ]
             
@@ -710,8 +725,13 @@ def main():
                 hide_index=True,
                 column_config={
                     "Predicted_Lead_Time_Days": st.column_config.NumberColumn(
-                        "Days Until Departure",
-                        help="Predicted number of days until employee leaves",
+                        "Total Days Until Departure",
+                        help="Predicted total days until employee leaves (resignation + notice)",
+                        format="%.0f"
+                    ),
+                    "Predicted_Notice_Period_Days": st.column_config.NumberColumn(
+                        "Notice Period (Days)",
+                        help="Predicted notice period length based on role/department",
                         format="%.0f"
                     ),
                     "Employee_ID": st.column_config.TextColumn(
@@ -750,17 +770,19 @@ def main():
                     
                     with result_col2:
                         st.write(f"**Attrition Probability:** {employee_data['Attrition_Probability']:.1%}")
-                        st.write(f"**Days Until Departure:** {int(employee_data['Predicted_Lead_Time_Days'])}")
+                        if 'Predicted_Notice_Period_Days' in employee_data:
+                            st.write(f"**Notice Period:** {int(employee_data['Predicted_Notice_Period_Days'])} days")
+                        st.write(f"**Total Days Until Departure:** {int(employee_data['Predicted_Lead_Time_Days'])}")
                     
                     with result_col3:
                         st.write(f"**Estimated Departure:** {employee_data.get('Estimated_Departure_Date', 'N/A')}")
                         
-                        # Color code based on urgency
+                        # Color code based on urgency (FIXED thresholds)
                         days_left = employee_data['Predicted_Lead_Time_Days']
-                        if days_left <= 30:
-                            st.error("🚨 URGENT: Leaving within 30 days!")
-                        elif days_left <= 60:
-                            st.warning("⚠️ WARNING: Leaving within 60 days")
+                        if days_left <= 60:
+                            st.error("🚨 URGENT: Leaving within 60 days!")
+                        elif days_left <= 120:
+                            st.warning("⚠️ WARNING: Leaving within 120 days")
                         else:
                             st.info("📅 Monitor situation")
                     
@@ -774,7 +796,7 @@ def main():
         # Employee search
         employee_id_search = st.text_input(
             "Enter Employee ID:",
-            placeholder="e.g., EMP001, EMP123",
+            placeholder="e.g., EMP_0001, EMP_0123",
             help="Search by Employee ID for detailed risk assessment"
         )
         
@@ -808,24 +830,28 @@ def main():
                     st.write(f"**Tenure:** {employee_data.get('Tenure_Years', 'N/A')} years")
                 
                 with col2:
-                    st.markdown("**Risk Assessment**")
+                    st.markdown("**FIXED Risk Assessment**")
                     
                     risk_category = employee_data['Risk_Category']
                     if risk_category == 'High':
                         st.markdown('<div class="urgent-card">', unsafe_allow_html=True)
                         st.write(f"**Risk Level:** 🔴 {risk_category} Risk")
                         st.write(f"**Probability:** {employee_data['Attrition_Probability']:.1%}")
+                        if 'Predicted_Notice_Period_Days' in employee_data:
+                            st.write(f"**Notice Period:** {int(employee_data['Predicted_Notice_Period_Days'])} days")
                         if not pd.isna(employee_data.get('Estimated_Departure_Date')):
                             st.write(f"**Est. Departure:** {employee_data['Estimated_Departure_Date']}")
-                            st.write(f"**Days Until Departure:** {int(employee_data['Predicted_Lead_Time_Days'])}")
+                            st.write(f"**Total Days Until Departure:** {int(employee_data['Predicted_Lead_Time_Days'])}")
                         st.markdown('</div>', unsafe_allow_html=True)
                     elif risk_category == 'Medium':
                         st.markdown('<div class="warning-card">', unsafe_allow_html=True)
                         st.write(f"**Risk Level:** 🟡 {risk_category} Risk")
                         st.write(f"**Probability:** {employee_data['Attrition_Probability']:.1%}")
+                        if 'Predicted_Notice_Period_Days' in employee_data:
+                            st.write(f"**Notice Period:** {int(employee_data['Predicted_Notice_Period_Days'])} days")
                         if not pd.isna(employee_data.get('Estimated_Departure_Date')):
                             st.write(f"**Est. Departure:** {employee_data['Estimated_Departure_Date']}")
-                            st.write(f"**Days Until Departure:** {int(employee_data['Predicted_Lead_Time_Days'])}")
+                            st.write(f"**Total Days Until Departure:** {int(employee_data['Predicted_Lead_Time_Days'])}")
                         st.markdown('</div>', unsafe_allow_html=True)
                     else:
                         st.markdown('<div class="safe-card">', unsafe_allow_html=True)
@@ -840,43 +866,131 @@ def main():
                 
                 with col1:
                     if 'Job_Satisfaction_Score' in employee_data:
-                        st.metric("Job Satisfaction", f"{employee_data['Job_Satisfaction_Score']}/10")
+                        satisfaction_score = employee_data['Job_Satisfaction_Score']
+                        st.metric("Job Satisfaction", f"{satisfaction_score:.1f}/10")
+                        if satisfaction_score < 5:
+                            st.error("🔴 Low satisfaction - retention risk!")
+                        elif satisfaction_score < 7:
+                            st.warning("🟡 Moderate satisfaction")
+                        else:
+                            st.success("🟢 High satisfaction")
+                    
                     if 'Manager_Rating' in employee_data:
-                        st.metric("Manager Rating", f"{employee_data['Manager_Rating']}/10")
+                        manager_rating = employee_data['Manager_Rating']
+                        st.metric("Manager Rating", f"{manager_rating:.1f}/10")
+                        if manager_rating < 5:
+                            st.error("🔴 Poor manager relationship!")
+                        elif manager_rating < 7:
+                            st.warning("🟡 Average manager relationship")
+                        else:
+                            st.success("🟢 Good manager relationship")
                 
                 with col2:
                     if 'Market_Salary_Ratio' in employee_data:
-                        st.metric("Market Salary Ratio", f"{employee_data['Market_Salary_Ratio']:.2f}")
+                        salary_ratio = employee_data['Market_Salary_Ratio']
+                        st.metric("Market Salary Ratio", f"{salary_ratio:.2f}")
+                        if salary_ratio < 0.8:
+                            st.error("🔴 Significantly underpaid!")
+                        elif salary_ratio < 0.9:
+                            st.warning("🟡 Below market rate")
+                        else:
+                            st.success("🟢 Competitive salary")
+                    
                     if 'Monthly_Salary' in employee_data:
                         st.metric("Monthly Salary", f"${employee_data['Monthly_Salary']:,}")
                 
-                # Recommendations
+                # Enhanced features if available
+                if any(col in employee_data for col in ['Intent_To_Stay_12Months', 'Engagement_Survey_Score']):
+                    st.subheader("🔬 Advanced Risk Indicators")
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        if 'Intent_To_Stay_12Months' in employee_data:
+                            intent_score = employee_data['Intent_To_Stay_12Months']
+                            st.metric("Intent to Stay (12 months)", f"{intent_score:.1f}/10")
+                            if intent_score < 4:
+                                st.error("🔴 Very low retention intent!")
+                            elif intent_score < 7:
+                                st.warning("🟡 Moderate retention intent")
+                            else:
+                                st.success("🟢 Strong retention intent")
+                    
+                    with col2:
+                        if 'Engagement_Survey_Score' in employee_data:
+                            engagement_score = employee_data['Engagement_Survey_Score']
+                            st.metric("Engagement Score", f"{engagement_score:.1f}/10")
+                            if engagement_score < 4:
+                                st.error("🔴 Low engagement!")
+                            elif engagement_score < 7:
+                                st.warning("🟡 Moderate engagement")
+                            else:
+                                st.success("🟢 High engagement")
+                
+                # FIXED: Enhanced recommendations
                 if risk_category in ['High', 'Medium']:
-                    st.subheader("💡 Recommended Actions")
+                    st.subheader("💡 FIXED Recommended Actions")
                     
                     recommendations = []
-                    if employee_data.get('Job_Satisfaction_Score', 10) < 6:
-                        recommendations.append("🗣️ Schedule one-on-one satisfaction discussion")
-                    if employee_data.get('Market_Salary_Ratio', 1.0) < 0.9:
+                    
+                    # Satisfaction-based recommendations
+                    if employee_data.get('Job_Satisfaction_Score', 10) < 5:
+                        recommendations.append("🆘 CRITICAL: Immediate intervention needed - Schedule emergency retention meeting")
+                    elif employee_data.get('Job_Satisfaction_Score', 10) < 7:
+                        recommendations.append("🗣️ Schedule one-on-one satisfaction discussion within 1 week")
+                    
+                    # Salary-based recommendations
+                    if employee_data.get('Market_Salary_Ratio', 1.0) < 0.8:
+                        recommendations.append("💰 URGENT: Significant salary adjustment needed - escalate to leadership")
+                    elif employee_data.get('Market_Salary_Ratio', 1.0) < 0.9:
                         recommendations.append("💰 Review and potentially adjust compensation package")
-                    if employee_data.get('Manager_Rating', 10) < 6:
-                        recommendations.append("👥 Assess manager-employee relationship dynamics")
-                    if not pd.isna(employee_data.get('Predicted_Lead_Time_Days')) and employee_data.get('Predicted_Lead_Time_Days', 365) <= 30:
-                        recommendations.append("⚡ URGENT: Schedule immediate retention meeting")
+                    
+                    # Manager relationship recommendations
+                    if employee_data.get('Manager_Rating', 10) < 5:
+                        recommendations.append("👥 CRITICAL: Manager relationship issue - consider team transfer or manager coaching")
+                    elif employee_data.get('Manager_Rating', 10) < 7:
+                        recommendations.append("👥 Assess and improve manager-employee relationship dynamics")
+                    
+                    # Enhanced feature recommendations
+                    if employee_data.get('Intent_To_Stay_12Months', 10) < 4:
+                        recommendations.append("🚨 IMMEDIATE: Employee has very low retention intent - emergency action required")
+                    
+                    if employee_data.get('Engagement_Survey_Score', 10) < 4:
+                        recommendations.append("📈 Focus on engagement initiatives - career development, recognition, challenging work")
+                    
+                    # Timeline-based recommendations
+                    if not pd.isna(employee_data.get('Predicted_Lead_Time_Days')) and employee_data.get('Predicted_Lead_Time_Days', 365) <= 60:
+                        recommendations.append("⚡ URGENT: Employee may leave within 60 days - immediate retention meeting required")
+                    elif not pd.isna(employee_data.get('Predicted_Lead_Time_Days')) and employee_data.get('Predicted_Lead_Time_Days', 365) <= 120:
+                        recommendations.append("⏰ Priority: Plan comprehensive retention strategy within 2 weeks")
+                    
+                    # Notice period specific recommendations
+                    if 'Predicted_Notice_Period_Days' in employee_data:
+                        notice_days = employee_data['Predicted_Notice_Period_Days']
+                        if notice_days < 30:
+                            recommendations.append("📋 Prepare for short notice period - expedite replacement hiring and knowledge transfer")
+                        elif notice_days > 60:
+                            recommendations.append("📋 Leverage longer notice period for thorough knowledge transfer and replacement training")
                     
                     if recommendations:
                         for i, rec in enumerate(recommendations, 1):
-                            st.write(f"{i}. {rec}")
+                            if "CRITICAL" in rec or "URGENT" in rec or "IMMEDIATE" in rec:
+                                st.error(f"{i}. {rec}")
+                            elif "Priority" in rec:
+                                st.warning(f"{i}. {rec}")
+                            else:
+                                st.info(f"{i}. {rec}")
                     else:
-                        st.write("• Monitor regularly and maintain engagement")
+                        st.info("• Continue regular monitoring and maintain engagement initiatives")
                 
             else:
                 st.error(f"❌ Employee ID '{target_employee_id}' not found.")
+                st.info("💡 Try entering the full Employee ID (e.g., EMP_0001) or browse the dropdown list.")
         else:
-            st.info("🔍 Please enter an Employee ID or select from the dropdown.")
+            st.info("🔍 Please enter an Employee ID or select from the dropdown to view detailed analysis.")
     
     with tab4:
-        st.header("📈 Analytics & Insights")
+        st.header("📈 FIXED Analytics & Insights")
         
         # Analytics section
         col1, col2 = st.columns(2)
@@ -911,13 +1025,13 @@ def main():
                 st.info("Job Satisfaction data not available")
         
         with col2:
-            # Salary ratio analysis
-            if 'Market_Salary_Ratio' in filtered_df.columns:
-                fig_salary = px.box(
+            # FIXED: Notice period analysis
+            if 'Predicted_Notice_Period_Days' in filtered_df.columns:
+                fig_notice = px.box(
                     filtered_df, 
                     x='Risk_Category', 
-                    y='Market_Salary_Ratio',
-                    title="Market Salary Ratio by Risk Level",
+                    y='Predicted_Notice_Period_Days',
+                    title="FIXED: Predicted Notice Period by Risk Level",
                     color='Risk_Category',
                     color_discrete_map={
                         'High': '#d32f2f',
@@ -926,7 +1040,7 @@ def main():
                     }
                 )
                 
-                fig_salary.update_layout(
+                fig_notice.update_layout(
                     title={
                         'x': 0.5,
                         'xanchor': 'center',
@@ -935,12 +1049,38 @@ def main():
                     height=400
                 )
                 
-                st.plotly_chart(fig_salary, use_container_width=True)
+                st.plotly_chart(fig_notice, use_container_width=True)
             else:
-                st.info("Market Salary Ratio data not available")
+                # Fallback to salary ratio if notice period not available
+                if 'Market_Salary_Ratio' in filtered_df.columns:
+                    fig_salary = px.box(
+                        filtered_df, 
+                        x='Risk_Category', 
+                        y='Market_Salary_Ratio',
+                        title="Market Salary Ratio by Risk Level",
+                        color='Risk_Category',
+                        color_discrete_map={
+                            'High': '#d32f2f',
+                            'Medium': '#f57c00', 
+                            'Low': '#2e7d32'
+                        }
+                    )
+                    
+                    fig_salary.update_layout(
+                        title={
+                            'x': 0.5,
+                            'xanchor': 'center',
+                            'font': {'size': 16}
+                        },
+                        height=400
+                    )
+                    
+                    st.plotly_chart(fig_salary, use_container_width=True)
+                else:
+                    st.info("Market Salary Ratio data not available")
         
         # Department-wise analysis
-        st.subheader("🏢 Department-wise Risk Analysis")
+        st.subheader("🏢 Department-wise FIXED Risk Analysis")
         
         # Create department analysis with available columns only
         analysis_cols = {
@@ -955,6 +1095,8 @@ def main():
             analysis_cols['Manager_Rating'] = 'mean'
         if 'Market_Salary_Ratio' in filtered_df.columns:
             analysis_cols['Market_Salary_Ratio'] = 'mean'
+        if 'Predicted_Notice_Period_Days' in filtered_df.columns:
+            analysis_cols['Predicted_Notice_Period_Days'] = 'mean'
         
         dept_analysis = filtered_df.groupby('Department').agg(analysis_cols).round(3)
         
@@ -966,6 +1108,8 @@ def main():
             new_column_names.append('Avg Manager Rating')
         if 'Market_Salary_Ratio' in analysis_cols:
             new_column_names.append('Avg Salary Ratio')
+        if 'Predicted_Notice_Period_Days' in analysis_cols:
+            new_column_names.append('Avg Notice Period (Days)')
         
         dept_analysis.columns = new_column_names
         dept_analysis = dept_analysis.sort_values('Avg Attrition Prob', ascending=False)
@@ -983,12 +1127,17 @@ def main():
                     "Avg Market Salary Ratio",
                     help="Average market salary ratio for department",
                     format="%.2f"
-                ) if 'Avg Salary Ratio' in new_column_names else None
+                ) if 'Avg Salary Ratio' in new_column_names else None,
+                "Avg Notice Period (Days)": st.column_config.NumberColumn(
+                    "Avg Notice Period (Days)",
+                    help="Average predicted notice period for department",
+                    format="%.0f"
+                ) if 'Avg Notice Period (Days)' in new_column_names else None
             }
         )
         
-        # Key insights summary
-        st.subheader("🔍 Key Insights Summary")
+        # FIXED: Key insights summary
+        st.subheader("🔍 FIXED Key Insights Summary")
         
         insights = []
         
@@ -1006,32 +1155,41 @@ def main():
                 satisfaction_diff = avg_satisfaction_low_risk - avg_satisfaction_high_risk
                 insights.append(f"😟 High-risk employees have **{satisfaction_diff:.1f} points lower** job satisfaction on average")
         
+        # FIXED: Notice period insights
+        if 'Predicted_Notice_Period_Days' in filtered_df.columns:
+            avg_notice_high = filtered_df[filtered_df['Risk_Category'] == 'High']['Predicted_Notice_Period_Days'].mean()
+            avg_notice_medium = filtered_df[filtered_df['Risk_Category'] == 'Medium']['Predicted_Notice_Period_Days'].mean()
+            
+            if not pd.isna(avg_notice_high) and not pd.isna(avg_notice_medium):
+                insights.append(f"📋 High-risk employees predicted to give **{avg_notice_high:.0f} days** notice on average")
+                insights.append(f"📋 Medium-risk employees predicted to give **{avg_notice_medium:.0f} days** notice on average")
+        
         # Department with highest risk
         if len(filtered_df) > 0:
             dept_risk = filtered_df.groupby('Department')['Attrition_Probability'].mean().sort_values(ascending=False)
             if len(dept_risk) > 0:
                 insights.append(f"🏢 **{dept_risk.index[0]}** department has the highest average attrition risk ({dept_risk.iloc[0]:.1%})")
         
-        # Urgent cases
+        # FIXED: Urgent cases with updated thresholds
         urgent_count = len(filtered_df[
             (filtered_df['Risk_Category'] == 'High') & 
-            (filtered_df['Predicted_Lead_Time_Days'] <= 30)
+            (filtered_df['Predicted_Lead_Time_Days'] <= 60)
         ])
         
         if urgent_count > 0:
-            insights.append(f"🚨 **{urgent_count} employees** require immediate attention (leaving within 30 days)")
+            insights.append(f"🚨 **{urgent_count} employees** require immediate attention (leaving within 60 days)")
         
         # Prediction coverage
         with_predictions = len(filtered_df[filtered_df['Predicted_Lead_Time_Days'].notna()])
         coverage_pct = (with_predictions / len(filtered_df) * 100) if len(filtered_df) > 0 else 0
-        insights.append(f"📈 **{coverage_pct:.1f}%** of employees have departure timeline predictions")
+        insights.append(f"📈 **{coverage_pct:.1f}%** of employees have FIXED departure timeline predictions")
         
         for insight in insights:
             st.markdown(insight)
         
-        # Model performance summary
+        # FIXED: Model performance summary
         if results is not None:
-            st.subheader("🤖 Model Performance Summary")
+            st.subheader("🤖 FIXED Model Performance Summary")
             
             perf_col1, perf_col2 = st.columns(2)
             
@@ -1049,7 +1207,7 @@ def main():
                                 st.warning(f"⚠️ {model}: Fair AUC ({auc_score:.3f})")
             
             with perf_col2:
-                st.markdown("**Regression Model (WHEN)**")
+                st.markdown("**FIXED Regression Model (NOTICE PERIOD)**")
                 if 'regression_results' in results:
                     for model, metrics in results['regression_results'].items():
                         if 'r2' in metrics:
@@ -1063,6 +1221,38 @@ def main():
                         
                         if 'mae' in metrics:
                             st.write(f"📊 MAE: {metrics['mae']:.1f} days")
+                
+                if 'approach' in results:
+                    st.info(f"**Approach:** {results['approach']}")
+        
+        # Download predictions
+        st.markdown("---")
+        st.subheader("📥 Export Data")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Export all predictions
+            if st.button("📊 Export All Predictions"):
+                csv_data = filtered_df.to_csv(index=False)
+                st.download_button(
+                    label="💾 Download CSV",
+                    data=csv_data,
+                    file_name=f'FIXED_all_predictions_{datetime.now().strftime("%Y%m%d")}.csv',
+                    mime='text/csv'
+                )
+        
+        with col2:
+            # Export high risk only
+            high_risk_df = filtered_df[filtered_df['Risk_Category'] == 'High']
+            if len(high_risk_df) > 0 and st.button("🚨 Export High Risk Only"):
+                high_risk_csv = high_risk_df.to_csv(index=False)
+                st.download_button(
+                    label="💾 Download High Risk CSV",
+                    data=high_risk_csv,
+                    file_name=f'FIXED_high_risk_{datetime.now().strftime("%Y%m%d")}.csv',
+                    mime='text/csv'
+                )
 
 if __name__ == "__main__":
     main()

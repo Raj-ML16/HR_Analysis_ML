@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 
 # Page config
 st.set_page_config(
-    page_title="HR Hiring Planning Dashboard",
+    page_title="HR Hiring Planning Dashboard - FIXED",
     page_icon="👥",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -69,36 +69,55 @@ st.markdown("""
         border-radius: 0.5rem;
         text-align: center;
     }
+    .fixed-notice {
+        background-color: #e8f4fd;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        border-left: 5px solid #2196f3;
+        margin: 1rem 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 @st.cache_data
 def load_hiring_data():
-    """Load hiring plan data"""
+    """Load FIXED hiring plan data"""
     try:
-        # Find the latest hiring plan file
-        hiring_files = glob.glob('UPDATED_integrated_hiring_plan_*.xlsx')
+        # FIXED: Look for FIXED hiring plan files first, then fallback
+        fixed_files = glob.glob('FIXED_integrated_hiring_plan_*.xlsx')
+        updated_files = glob.glob('UPDATED_integrated_hiring_plan_*.xlsx')
         
-        if not hiring_files:
-            st.error("❌ No hiring plan found. Please run Hiring_calculation.py first.")
-            return None, None, None
-        
-        latest_file = max(hiring_files, key=os.path.getmtime)
+        if fixed_files:
+            latest_file = max(fixed_files, key=os.path.getmtime)
+            file_type = "FIXED"
+        elif updated_files:
+            latest_file = max(updated_files, key=os.path.getmtime)
+            file_type = "UPDATED"
+        else:
+            st.error("❌ No hiring plan found. Please run Hiring_calculation_FIXED.py first.")
+            return None, None, None, None
         
         # Load all sheets
         executive_summary = pd.read_excel(latest_file, sheet_name='Executive_Summary')
-        at_risk_employees = pd.read_excel(latest_file, sheet_name='FIXED_ML_At_Risk_Employees')
+        
+        # FIXED: Updated sheet name for at-risk employees
+        try:
+            at_risk_employees = pd.read_excel(latest_file, sheet_name='FIXED_ML_At_Risk_Employees')
+        except:
+            # Fallback to old sheet name
+            at_risk_employees = pd.read_excel(latest_file, sheet_name='UPDATED_ML_At_Risk_Employees')
+        
         hiring_timeline = pd.read_excel(latest_file, sheet_name='Hiring_Timeline')
         
         # Convert date columns
         hiring_timeline['Start_Hiring_Date'] = pd.to_datetime(hiring_timeline['Start_Hiring_Date'])
         hiring_timeline['Departure_Date'] = pd.to_datetime(hiring_timeline['Departure_Date'], errors='coerce')
         
-        return executive_summary, at_risk_employees, hiring_timeline, latest_file
+        return executive_summary, at_risk_employees, hiring_timeline, latest_file, file_type
         
     except Exception as e:
         st.error(f"Error loading hiring data: {str(e)}")
-        return None, None, None, None
+        return None, None, None, None, None
 
 def get_urgency_color(days_from_today):
     """Get color based on urgency"""
@@ -129,7 +148,7 @@ def create_hiring_timeline_chart(hiring_df):
         x='Timeline_Bucket',
         y='Count',
         color='Hiring_Type',
-        title="Hiring Timeline Overview",
+        title="FIXED Hiring Timeline Overview",
         color_discrete_map={
             'Replacement': '#d32f2f',
             'Growth': '#1976d2'
@@ -139,7 +158,7 @@ def create_hiring_timeline_chart(hiring_df):
     
     fig.update_layout(
         title={
-            'text': "Hiring Timeline Overview",
+            'text': "FIXED Hiring Timeline Overview",
             'x': 0.5,
             'xanchor': 'center',
             'font': {'size': 18}
@@ -161,7 +180,7 @@ def create_department_hiring_chart(hiring_df):
         x='Department',
         y='Count',
         color='Hiring_Type',
-        title="Hiring Needs by Department",
+        title="FIXED Hiring Needs by Department",
         color_discrete_map={
             'Replacement': '#d32f2f',
             'Growth': '#1976d2'
@@ -170,7 +189,7 @@ def create_department_hiring_chart(hiring_df):
     
     fig.update_layout(
         title={
-            'text': "Hiring Needs by Department",
+            'text': "FIXED Hiring Needs by Department",
             'x': 0.5,
             'xanchor': 'center',
             'font': {'size': 18}
@@ -188,6 +207,7 @@ def create_priority_distribution_chart(hiring_df):
     
     colors = {
         'CRITICAL': '#d32f2f',
+        'HIGH': '#f57c00',      # FIXED: Added HIGH priority color
         'NORMAL': '#2e7d32',
         'LOW': '#1976d2'
     }
@@ -201,7 +221,7 @@ def create_priority_distribution_chart(hiring_df):
     
     fig.update_layout(
         title={
-            'text': "Hiring Priority Distribution",
+            'text': "FIXED Hiring Priority Distribution",
             'x': 0.5,
             'xanchor': 'center',
             'font': {'size': 18}
@@ -212,8 +232,16 @@ def create_priority_distribution_chart(hiring_df):
     return fig
 
 def display_hiring_item(item, show_employee_details=True):
-    """Display individual hiring item"""
-    priority_color = "#d32f2f" if item['Priority'] == 'CRITICAL' else "#f57c00" if item['Priority'] == 'NORMAL' else "#2e7d32"
+    """Display individual hiring item with FIXED enhancements"""
+    # FIXED: Updated priority colors to include HIGH
+    if item['Priority'] == 'CRITICAL':
+        priority_color = "#d32f2f"
+    elif item['Priority'] == 'HIGH':
+        priority_color = "#f57c00"
+    elif item['Priority'] == 'NORMAL':
+        priority_color = "#2e7d32"
+    else:
+        priority_color = "#1976d2"
     
     # Determine card style based on urgency
     if item['Days_From_Today'] <= 0:
@@ -243,6 +271,10 @@ def display_hiring_item(item, show_employee_details=True):
         
         st.write(f"**Department:** {item['Department']}")
         st.write(f"**Type:** {item['Hiring_Type']}")
+        
+        # FIXED: Show notice period information if available
+        if 'Predicted_Notice_Days' in item and pd.notna(item['Predicted_Notice_Days']) and item['Predicted_Notice_Days'] != 'N/A':
+            st.write(f"**Notice Period:** {item['Predicted_Notice_Days']} days")
     
     with col2:
         st.write(f"**Priority:** {item['Priority']}")
@@ -251,6 +283,11 @@ def display_hiring_item(item, show_employee_details=True):
         
         if item['Hiring_Type'] == 'Replacement' and pd.notna(item['Departure_Date']):
             st.write(f"**Departure Date:** {item['Departure_Date'].strftime('%Y-%m-%d')}")
+        
+        # FIXED: Show data source
+        if 'Data_Source' in item:
+            source_color = "🟢" if item['Data_Source'] == 'FIXED_ML' else "🟡"
+            st.write(f"**Data Source:** {source_color} {item['Data_Source']}")
     
     with col3:
         st.markdown(f'<div style="background-color: {priority_color}; color: white; padding: 0.5rem; border-radius: 0.25rem; text-align: center; font-weight: bold;">{urgency_text}</div>', unsafe_allow_html=True)
@@ -264,17 +301,26 @@ def display_hiring_item(item, show_employee_details=True):
 
 def main():
     # Load data
-    executive_summary, at_risk_employees, hiring_timeline, source_file = load_hiring_data()
+    result = load_hiring_data()
+    
+    if result is None or len(result) != 5:
+        return
+    
+    executive_summary, at_risk_employees, hiring_timeline, source_file, file_type = result
     
     if hiring_timeline is None:
         return
     
     # Header
-    st.markdown('<div class="main-header">👥 HR Hiring Planning Dashboard</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">👥 HR Hiring Planning Dashboard - FIXED</div>', unsafe_allow_html=True)
     
-    # File info
+    # File info with FIXED indicator
     if source_file:
-        st.info(f"📊 Data loaded from: {os.path.basename(source_file)}")
+        st.markdown('<div class="fixed-notice">', unsafe_allow_html=True)
+        st.markdown(f"📊 **{file_type} Data loaded from:** {os.path.basename(source_file)}")
+        if file_type == "FIXED":
+            st.markdown("✅ **Using FIXED ML predictions with realistic notice periods**")
+        st.markdown('</div>', unsafe_allow_html=True)
     
     # Sidebar filters
     st.sidebar.header("🎛️ Filters")
@@ -287,7 +333,7 @@ def main():
     hiring_types = ['All Types', 'Replacement', 'Growth']
     selected_type = st.sidebar.selectbox("Filter by Hiring Type", hiring_types)
     
-    # Priority filter
+    # Priority filter - FIXED: Include HIGH priority
     priorities = ['All Priorities'] + sorted(hiring_timeline['Priority'].unique().tolist())
     selected_priority = st.sidebar.selectbox("Filter by Priority", priorities)
     
@@ -318,14 +364,15 @@ def main():
             filtered_df = filtered_df[filtered_df['Days_From_Today'] <= 90]
     
     # Key metrics
-    st.markdown("### 📊 Hiring Overview")
+    st.markdown("### 📊 FIXED Hiring Overview")
     
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
     
     total_positions = len(filtered_df)
     replacement_count = len(filtered_df[filtered_df['Hiring_Type'] == 'Replacement'])
     growth_count = len(filtered_df[filtered_df['Hiring_Type'] == 'Growth'])
     critical_count = len(filtered_df[filtered_df['Priority'] == 'CRITICAL'])
+    high_count = len(filtered_df[filtered_df['Priority'] == 'HIGH'])  # FIXED: Added HIGH priority count
     immediate_count = len(filtered_df[filtered_df['Days_From_Today'] <= 0])
     
     with col1:
@@ -350,6 +397,11 @@ def main():
     
     with col5:
         st.markdown('<div class="metric-container">', unsafe_allow_html=True)
+        st.metric("High Priority", high_count)  # FIXED: Added HIGH priority metric
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with col6:
+        st.markdown('<div class="metric-container">', unsafe_allow_html=True)
         st.metric("🚨 Immediate Action", immediate_count)
         st.markdown('</div>', unsafe_allow_html=True)
     
@@ -358,6 +410,14 @@ def main():
         st.markdown('<div class="critical-card">', unsafe_allow_html=True)
         st.markdown(f"### 🚨 URGENT: {immediate_count} positions need immediate hiring action!")
         st.markdown('</div>', unsafe_allow_html=True)
+    
+    # FIXED: Show data quality info
+    if 'Data_Source' in hiring_timeline.columns:
+        fixed_ml_count = len(hiring_timeline[hiring_timeline.get('Data_Source', '') == 'FIXED_ML'])
+        fallback_count = len(hiring_timeline[hiring_timeline.get('Data_Source', '') == 'Fallback'])
+        
+        if fixed_ml_count > 0 or fallback_count > 0:
+            st.info(f"📊 **Data Quality:** {fixed_ml_count} positions based on FIXED ML predictions, {fallback_count} using fallback estimates")
     
     # Main tabs
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -372,6 +432,11 @@ def main():
         if len(immediate_df) > 0:
             st.subheader(f"⚡ {len(immediate_df)} positions require action within 7 days")
             
+            # FIXED: Show breakdown by priority
+            priority_breakdown = immediate_df['Priority'].value_counts()
+            priority_text = ", ".join([f"{count} {priority}" for priority, count in priority_breakdown.items()])
+            st.write(f"**Priority Breakdown:** {priority_text}")
+            
             # Immediate action items
             for idx, item in immediate_df.iterrows():
                 display_hiring_item(item)
@@ -381,14 +446,14 @@ def main():
             st.download_button(
                 label="📥 Download Immediate Actions List",
                 data=csv,
-                file_name=f'immediate_hiring_actions_{datetime.now().strftime("%Y%m%d")}.csv',
+                file_name=f'immediate_hiring_actions_FIXED_{datetime.now().strftime("%Y%m%d")}.csv',
                 mime='text/csv'
             )
         else:
             st.success("✅ No immediate actions required!")
     
     with tab2:
-        st.header("📅 Complete Hiring Timeline")
+        st.header("📅 Complete FIXED Hiring Timeline")
         
         # Interactive charts
         col1, col2 = st.columns(2)
@@ -402,16 +467,29 @@ def main():
             st.plotly_chart(fig_priority, use_container_width=True)
         
         # Timeline table
-        st.subheader("📋 Detailed Hiring Timeline")
+        st.subheader("📋 Detailed FIXED Hiring Timeline")
         
         # Sort by urgency
         timeline_sorted = filtered_df.sort_values(['Days_From_Today', 'Priority'])
         
+        # FIXED: Enhanced column selection
+        display_columns = [
+            'Employee_ID', 'Name', 'Department', 'Position', 'Hiring_Type',
+            'Priority', 'Days_From_Today', 'Start_Hiring_Date', 'Action_Status'
+        ]
+        
+        # FIXED: Add notice period column if available
+        if 'Predicted_Notice_Days' in timeline_sorted.columns:
+            display_columns.insert(-1, 'Predicted_Notice_Days')
+        
+        # FIXED: Add data source column if available
+        if 'Data_Source' in timeline_sorted.columns:
+            display_columns.append('Data_Source')
+        
+        available_columns = [col for col in display_columns if col in timeline_sorted.columns]
+        
         st.dataframe(
-            timeline_sorted[[
-                'Employee_ID', 'Name', 'Department', 'Position', 'Hiring_Type',
-                'Priority', 'Days_From_Today', 'Start_Hiring_Date', 'Action_Status'
-            ]],
+            timeline_sorted[available_columns],
             use_container_width=True,
             hide_index=True,
             column_config={
@@ -423,12 +501,21 @@ def main():
                 "Start_Hiring_Date": st.column_config.DateColumn(
                     "Start Hiring Date",
                     help="When to begin recruitment process"
-                )
+                ),
+                "Predicted_Notice_Days": st.column_config.NumberColumn(
+                    "Notice Period",
+                    help="Predicted notice period from FIXED ML model",
+                    format="%.0f"
+                ) if 'Predicted_Notice_Days' in timeline_sorted.columns else None,
+                "Data_Source": st.column_config.TextColumn(
+                    "Data Source",
+                    help="Source of departure prediction (FIXED_ML or Fallback)"
+                ) if 'Data_Source' in timeline_sorted.columns else None
             }
         )
     
     with tab3:
-        st.header("🏢 Department-Wise Hiring Plan")
+        st.header("🏢 Department-Wise FIXED Hiring Plan")
         
         if executive_summary is not None:
             # Department overview chart
@@ -457,17 +544,24 @@ def main():
             
             # Department details
             if selected_dept != 'All Departments':
-                st.subheader(f"📋 {selected_dept} - Detailed Hiring Plan")
+                st.subheader(f"📋 {selected_dept} - Detailed FIXED Hiring Plan")
                 dept_data = filtered_df[filtered_df['Department'] == selected_dept]
+                
+                # FIXED: Show notice period insights for department
+                if 'Predicted_Notice_Days' in dept_data.columns:
+                    notice_data = dept_data[dept_data['Predicted_Notice_Days'] != 'N/A']
+                    if len(notice_data) > 0:
+                        avg_notice = notice_data['Predicted_Notice_Days'].astype(float).mean()
+                        st.info(f"📋 **Average Notice Period for {selected_dept}:** {avg_notice:.0f} days")
                 
                 for idx, item in dept_data.iterrows():
                     display_hiring_item(item, show_employee_details=True)
     
     with tab4:
-        st.header("👥 Employee Details & Replacement Planning")
+        st.header("👥 Employee Details & FIXED Replacement Planning")
         
         if at_risk_employees is not None:
-            st.subheader("🚨 At-Risk Employees (Predicted Departures)")
+            st.subheader("🚨 At-Risk Employees (FIXED ML Predictions)")
             
             # Risk level filter for this tab
             risk_levels = ['All Risk Levels'] + sorted(at_risk_employees['Risk_Category'].unique().tolist())
@@ -477,22 +571,33 @@ def main():
             if risk_filter != 'All Risk Levels':
                 filtered_at_risk = filtered_at_risk[filtered_at_risk['Risk_Category'] == risk_filter]
             
+            # FIXED: Enhanced column configuration
+            column_config = {
+                "Attrition_Probability": st.column_config.NumberColumn(
+                    "Attrition Probability",
+                    help="ML model's confidence in departure prediction",
+                    format="%.1%"
+                ),
+                "Estimated_Departure_Date": st.column_config.DateColumn(
+                    "Estimated Departure",
+                    help="Predicted departure date from FIXED ML model"
+                )
+            }
+            
+            # FIXED: Add notice period column config if available
+            if 'Predicted_Notice_Period_Days' in filtered_at_risk.columns:
+                column_config["Predicted_Notice_Period_Days"] = st.column_config.NumberColumn(
+                    "Notice Period (Days)",
+                    help="Predicted notice period from FIXED ML model",
+                    format="%.0f"
+                )
+            
             # Display at-risk employees
             st.dataframe(
                 filtered_at_risk,
                 use_container_width=True,
                 hide_index=True,
-                column_config={
-                    "Attrition_Probability": st.column_config.NumberColumn(
-                        "Attrition Probability",
-                        help="ML model's confidence in departure prediction",
-                        format="%.1%"
-                    ),
-                    "Estimated_Departure_Date": st.column_config.DateColumn(
-                        "Estimated Departure",
-                        help="Predicted departure date from ML model"
-                    )
-                }
+                column_config=column_config
             )
             
             # Employee search
@@ -513,22 +618,31 @@ def main():
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        st.markdown("**👤 Employee Information**")
+                        st.markdown("**👤 FIXED Employee Information**")
                         st.write(f"**Name:** {emp['Name']}")
                         st.write(f"**Department:** {emp['Department']}")
                         st.write(f"**Risk Level:** {emp['Risk_Category']}")
                         st.write(f"**Departure Probability:** {emp['Attrition_Probability']:.1%}")
                         if pd.notna(emp['Estimated_Departure_Date']):
                             st.write(f"**Estimated Departure:** {pd.to_datetime(emp['Estimated_Departure_Date']).strftime('%Y-%m-%d')}")
+                        
+                        # FIXED: Show notice period if available
+                        if 'Predicted_Notice_Period_Days' in emp and pd.notna(emp['Predicted_Notice_Period_Days']):
+                            st.write(f"**Predicted Notice Period:** {emp['Predicted_Notice_Period_Days']:.0f} days")
                     
                     with col2:
                         if len(hiring_plan) > 0:
                             plan = hiring_plan.iloc[0]
-                            st.markdown("**📋 Replacement Plan**")
+                            st.markdown("**📋 FIXED Replacement Plan**")
                             st.write(f"**Priority:** {plan['Priority']}")
                             st.write(f"**Start Hiring:** {plan['Start_Hiring_Date'].strftime('%Y-%m-%d')}")
                             st.write(f"**Action Status:** {plan['Action_Status']}")
                             st.write(f"**Lead Time:** {plan['Lead_Time_Days']} days")
+                            
+                            # FIXED: Show data source
+                            if 'Data_Source' in plan:
+                                source_indicator = "🟢 FIXED ML" if plan['Data_Source'] == 'FIXED_ML' else "🟡 Fallback"
+                                st.write(f"**Data Source:** {source_indicator}")
                             
                             # Urgency indicator
                             if plan['Days_From_Today'] <= 0:
@@ -541,10 +655,10 @@ def main():
                             st.write("No hiring plan found for this employee.")
     
     with tab5:
-        st.header("📈 Hiring Analytics & Insights")
+        st.header("📈 FIXED Hiring Analytics & Insights")
         
         # Key insights
-        st.subheader("🔍 Key Insights")
+        st.subheader("🔍 FIXED Key Insights")
         
         insights = []
         
@@ -553,11 +667,18 @@ def main():
         replacement_pct = (len(hiring_timeline[hiring_timeline['Hiring_Type'] == 'Replacement']) / total_hiring * 100) if total_hiring > 0 else 0
         growth_pct = (len(hiring_timeline[hiring_timeline['Hiring_Type'] == 'Growth']) / total_hiring * 100) if total_hiring > 0 else 0
         critical_pct = (len(hiring_timeline[hiring_timeline['Priority'] == 'CRITICAL']) / total_hiring * 100) if total_hiring > 0 else 0
+        high_pct = (len(hiring_timeline[hiring_timeline['Priority'] == 'HIGH']) / total_hiring * 100) if total_hiring > 0 else 0
         
-        insights.append(f"📊 **{total_hiring} total positions** need to be filled")
+        insights.append(f"📊 **{total_hiring} total positions** need to be filled using FIXED ML predictions")
         insights.append(f"🔄 **{replacement_pct:.1f}%** are replacement hires (attrition-driven)")
         insights.append(f"📈 **{growth_pct:.1f}%** are growth hires (business expansion)")
         insights.append(f"🚨 **{critical_pct:.1f}%** are critical priority positions")
+        insights.append(f"⚠️ **{high_pct:.1f}%** are high priority positions")
+        
+        # FIXED: Data source quality insights
+        if 'Data_Source' in hiring_timeline.columns:
+            fixed_ml_pct = (len(hiring_timeline[hiring_timeline['Data_Source'] == 'FIXED_ML']) / total_hiring * 100) if total_hiring > 0 else 0
+            insights.append(f"🎯 **{fixed_ml_pct:.1f}%** based on FIXED ML predictions with realistic notice periods")
         
         # Department with most hiring needs
         dept_counts = hiring_timeline['Department'].value_counts()
@@ -569,11 +690,21 @@ def main():
         if immediate_pct > 0:
             insights.append(f"⚡ **{immediate_pct:.1f}%** of positions need immediate action")
         
+        # FIXED: Notice period insights
+        if 'Predicted_Notice_Days' in hiring_timeline.columns:
+            notice_data = hiring_timeline[hiring_timeline['Predicted_Notice_Days'] != 'N/A']
+            if len(notice_data) > 0:
+                try:
+                    avg_notice = notice_data['Predicted_Notice_Days'].astype(float).mean()
+                    insights.append(f"📋 **Average predicted notice period: {avg_notice:.0f} days** (FIXED ML model)")
+                except:
+                    pass
+        
         for insight in insights:
             st.markdown(insight)
         
         # Performance tracking
-        st.subheader("📊 Hiring Performance Tracking")
+        st.subheader("📊 FIXED Hiring Performance Tracking")
         
         col1, col2 = st.columns(2)
         
@@ -584,6 +715,20 @@ def main():
             
             st.markdown("**Lead Time Analysis by Department**")
             st.dataframe(lead_time_stats, use_container_width=True)
+            
+            # FIXED: Notice period analysis by department
+            if 'Predicted_Notice_Days' in hiring_timeline.columns:
+                notice_data = hiring_timeline[hiring_timeline['Predicted_Notice_Days'] != 'N/A'].copy()
+                if len(notice_data) > 0:
+                    try:
+                        notice_data['Predicted_Notice_Days'] = notice_data['Predicted_Notice_Days'].astype(float)
+                        notice_stats = notice_data.groupby('Department')['Predicted_Notice_Days'].agg(['mean', 'min', 'max']).round(0)
+                        notice_stats.columns = ['Avg Notice', 'Min Notice', 'Max Notice']
+                        
+                        st.markdown("**FIXED Notice Period Analysis by Department**")
+                        st.dataframe(notice_stats, use_container_width=True)
+                    except:
+                        st.info("Notice period data requires processing")
         
         with col2:
             # Hiring volume by month
@@ -596,7 +741,7 @@ def main():
                 x='Start_Month',
                 y='Count',
                 color='Hiring_Type',
-                title="Hiring Volume by Month",
+                title="FIXED Hiring Volume by Month",
                 color_discrete_map={
                     'Replacement': '#d32f2f',
                     'Growth': '#1976d2'
@@ -609,9 +754,56 @@ def main():
             )
             
             st.plotly_chart(fig_monthly, use_container_width=True)
+            
+            # FIXED: Priority breakdown chart
+            priority_breakdown = hiring_timeline['Priority'].value_counts()
+            fig_priority_breakdown = px.pie(
+                values=priority_breakdown.values,
+                names=priority_breakdown.index,
+                title="FIXED Priority Breakdown",
+                color_discrete_map={
+                    'CRITICAL': '#d32f2f',
+                    'HIGH': '#f57c00',
+                    'NORMAL': '#2e7d32',
+                    'LOW': '#1976d2'
+                }
+            )
+            fig_priority_breakdown.update_layout(height=300)
+            st.plotly_chart(fig_priority_breakdown, use_container_width=True)
+        
+        # FIXED: Data quality analysis
+        if 'Data_Source' in hiring_timeline.columns:
+            st.subheader("🎯 FIXED Data Quality Analysis")
+            
+            data_quality = hiring_timeline['Data_Source'].value_counts()
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**Data Source Breakdown:**")
+                for source, count in data_quality.items():
+                    percentage = (count / len(hiring_timeline)) * 100
+                    if source == 'FIXED_ML':
+                        st.success(f"🟢 **{source}:** {count} positions ({percentage:.1f}%)")
+                    else:
+                        st.warning(f"🟡 **{source}:** {count} positions ({percentage:.1f}%)")
+            
+            with col2:
+                fig_data_quality = px.pie(
+                    values=data_quality.values,
+                    names=data_quality.index,
+                    title="Data Source Distribution",
+                    color_discrete_map={
+                        'FIXED_ML': '#2e7d32',
+                        'Fallback': '#fbc02d',
+                        'Business_Growth': '#1976d2'
+                    }
+                )
+                fig_data_quality.update_layout(height=300)
+                st.plotly_chart(fig_data_quality, use_container_width=True)
         
         # Export options
-        st.subheader("📥 Export Options")
+        st.subheader("📥 FIXED Export Options")
         
         col1, col2, col3 = st.columns(3)
         
@@ -619,9 +811,9 @@ def main():
             # Full hiring timeline
             csv_all = hiring_timeline.to_csv(index=False)
             st.download_button(
-                label="📄 Download Complete Hiring Plan",
+                label="📄 Download Complete FIXED Hiring Plan",
                 data=csv_all,
-                file_name=f'complete_hiring_plan_{datetime.now().strftime("%Y%m%d")}.csv',
+                file_name=f'complete_FIXED_hiring_plan_{datetime.now().strftime("%Y%m%d")}.csv',
                 mime='text/csv'
             )
         
@@ -632,7 +824,7 @@ def main():
             st.download_button(
                 label="🚨 Download Immediate Actions",
                 data=csv_immediate,
-                file_name=f'immediate_actions_{datetime.now().strftime("%Y%m%d")}.csv',
+                file_name=f'immediate_actions_FIXED_{datetime.now().strftime("%Y%m%d")}.csv',
                 mime='text/csv'
             )
         
@@ -643,9 +835,43 @@ def main():
                 st.download_button(
                     label="📊 Download Executive Summary",
                     data=csv_summary,
-                    file_name=f'executive_summary_{datetime.now().strftime("%Y%m%d")}.csv',
+                    file_name=f'executive_summary_FIXED_{datetime.now().strftime("%Y%m%d")}.csv',
                     mime='text/csv'
                 )
+        
+        # FIXED: Additional insights section
+        st.subheader("💡 FIXED Business Impact Analysis")
+        
+        # Calculate business impact metrics
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**Cost Impact Analysis:**")
+            
+            # Estimate recruitment costs (example: $5K per position)
+            avg_recruitment_cost = 5000
+            total_recruitment_cost = total_hiring * avg_recruitment_cost
+            
+            st.metric("Total Recruitment Investment", f"${total_recruitment_cost:,}")
+            st.metric("Average Cost per Position", f"${avg_recruitment_cost:,}")
+            
+            # Time to fill estimates
+            avg_time_to_fill = hiring_timeline['Lead_Time_Days'].mean()
+            st.metric("Average Time to Fill", f"{avg_time_to_fill:.0f} days")
+        
+        with col2:
+            st.markdown("**Risk Mitigation:**")
+            
+            critical_high_count = len(hiring_timeline[hiring_timeline['Priority'].isin(['CRITICAL', 'HIGH'])])
+            risk_mitigation_score = ((total_hiring - critical_high_count) / total_hiring * 100) if total_hiring > 0 else 0
+            
+            st.metric("Risk Mitigation Score", f"{risk_mitigation_score:.1f}%")
+            st.metric("High Priority Positions", critical_high_count)
+            
+            # FIXED ML confidence
+            if 'Data_Source' in hiring_timeline.columns:
+                fixed_ml_confidence = (len(hiring_timeline[hiring_timeline['Data_Source'] == 'FIXED_ML']) / total_hiring * 100) if total_hiring > 0 else 0
+                st.metric("FIXED ML Confidence", f"{fixed_ml_confidence:.1f}%")
 
 if __name__ == "__main__":
     main()

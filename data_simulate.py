@@ -16,8 +16,6 @@ TOTAL_EMPLOYEES = 3000
 DEPARTED_EMPLOYEES = 900
 ACTIVE_EMPLOYEES = 2100
 
-print("Generating IMPROVED synthetic dataset with realistic patterns...")
-
 # Department and designation mapping
 DEPARTMENTS = {
     'Engineering': ['Software Engineer', 'Senior Engineer', 'Tech Lead', 'Engineering Manager'],
@@ -38,8 +36,76 @@ SALARY_RANGES = {
     'Operations': {'Operations': (45000, 70000), 'Process': (80000, 120000), 'VP': (150000, 250000)}
 }
 
-def generate_realistic_employee_data():
-    """Generate employee dataset with realistic, overlapping patterns"""
+def get_standard_notice_period(designation, department):
+    """Get standard notice period based on role and department (REALISTIC APPROACH)"""
+    
+    # Executive level (C-suite, VPs, Directors)
+    if any(title in designation for title in ['Manager', 'Director', 'VP', 'CFO']):
+        base_notice = 90  # 3 months
+        notice_type = 'Executive'
+        
+    # Senior technical/professional roles
+    elif any(title in designation for title in ['Tech Lead', 'Senior', 'Lead']):
+        base_notice = 60  # 2 months
+        notice_type = 'Senior'
+        
+    # Professional roles in high-skill departments
+    elif department in ['Engineering', 'Finance']:
+        base_notice = 30  # 1 month
+        notice_type = 'Professional'
+        
+    # Standard roles
+    else:
+        base_notice = 14  # 2 weeks
+        notice_type = 'Standard'
+    
+    # Add realistic variation (±20% but at least 7 days)
+    variation_range = int(base_notice * 0.2)
+    actual_notice = base_notice + random.randint(-variation_range, variation_range)
+    
+    return max(7, actual_notice), notice_type
+
+def apply_notice_variations(standard_notice, employee_data):
+    """Apply realistic variations to standard notice periods based on employee circumstances"""
+    
+    actual_notice = standard_notice
+    
+    # High performers often give longer notice for better handover
+    if employee_data['Performance_Rating'] > 4.0:
+        if random.random() < 0.3:  # 30% chance
+            actual_notice += random.randint(7, 21)  # Extra 1-3 weeks
+    
+    # Emergency personal situations (family, health, urgent opportunities)
+    if random.random() < 0.08:  # 8% chance - realistic emergency rate
+        actual_notice = max(7, actual_notice - random.randint(7, 21))
+        # Note: 7 days minimum (legal/contractual requirement)
+    
+    # Significantly underpaid employees might get early release
+    if employee_data['Market_Salary_Ratio'] < 0.80:  # Very underpaid
+        if random.random() < 0.25:  # 25% chance
+            actual_notice = max(14, actual_notice - random.randint(7, 14))
+    
+    # Long tenure employees often give longer notice (loyalty factor)
+    tenure_years = (datetime.now().date() - employee_data['Joining_Date']).days / 365.25
+    if tenure_years > 5 and random.random() < 0.4:  # 40% chance for 5+ year employees
+        actual_notice += random.randint(7, 14)
+    
+    # Very low engagement/satisfaction might lead to shorter notice
+    if employee_data['Job_Satisfaction_Score'] < 3.0 and employee_data['Intent_To_Stay_12Months'] < 3.0:
+        if random.random() < 0.2:  # 20% chance for very disengaged employees
+            actual_notice = max(14, actual_notice - random.randint(0, 14))
+    
+    # Senior employees with competing offers often negotiate notice period
+    if 'Manager' in employee_data['Designation'] and employee_data['Market_Salary_Ratio'] < 0.90:
+        if random.random() < 0.3:  # 30% chance
+            # Could be shorter (competing offer pressure) or longer (negotiated handover)
+            adjustment = random.choice([-14, -7, 7, 14])
+            actual_notice = max(21, actual_notice + adjustment)  # Managers minimum 3 weeks
+    
+    return actual_notice
+
+def generate_enhanced_employee_data():
+    """Generate employee dataset with realistic patterns + TOP 5 timeline features"""
     
     employees = []
     
@@ -65,7 +131,6 @@ def generate_realistic_employee_data():
         
         # Work characteristics
         avg_work_hours = np.clip(np.random.normal(45, 6), 35, 65)
-        
         project_workload = np.random.choice(['Low', 'Medium', 'High'], p=[0.2, 0.6, 0.2])
         remote_work_days = np.random.randint(0, 5)
         
@@ -103,7 +168,25 @@ def generate_realistic_employee_data():
         else:
             manager_id = np.random.randint(1, min(11, i))
         
+        # === TOP 5 ENHANCED FEATURES FOR TIMELINE PREDICTION ===
+        
+        # 1. Intent_To_Stay_12Months (🥇 STRONGEST PREDICTOR)
+        intent_to_stay_12months = np.clip(np.random.normal(7.0, 2.0), 1, 10)
+        
+        # 2. Engagement_Survey_Score (🥈 BEHAVIORAL SIGNAL)
+        engagement_survey_score = np.clip(np.random.normal(6.8, 1.8), 1, 10)
+        
+        # 3. Meeting_Participation_Score (🥉 OBSERVABLE DECLINE)
+        meeting_participation_score = np.clip(np.random.normal(7.5, 1.8), 1, 10)
+        
+        # 4. Time_Since_Last_Promotion_Months (🏅 CAREER STAGNATION)
+        time_since_last_promotion_months = np.random.randint(6, 60)
+        
+        # 5. Training_Completion_Rate (🏅 ROLE COMMITMENT)
+        training_completion_rate = np.clip(np.random.normal(0.75, 0.25), 0, 1)
+        
         employee = {
+            # Basic Info (Original)
             'Employee_ID': f'EMP_{i:04d}',
             'Name': fake.name(),
             'Gender': gender,
@@ -115,21 +198,36 @@ def generate_realistic_employee_data():
             'Designation': designation,
             'Manager_ID': f'EMP_{manager_id:04d}' if manager_id else None,
             'Joining_Date': joining_date,
+            
+            # Performance & Work (Original)
             'Performance_Rating': round(performance_rating, 1),
             'Avg_Work_Hours': round(avg_work_hours, 1),
             'Project_Workload': project_workload,
             'Remote_Work_Days_Monthly': remote_work_days,
+            
+            # Compensation (Original)
             'Monthly_Salary': monthly_salary,
             'Market_Salary_Ratio': round(market_salary_ratio, 2),
             'Salary_Change_%': round(salary_change_pct, 1),
             'Bonus_Last_Year': bonus_last_year,
+            
+            # Satisfaction & Engagement (Original)
             'Job_Satisfaction_Score': round(job_satisfaction, 1),
             'Manager_Rating': round(manager_rating, 1),
+            
+            # Behavioral Indicators (Original)
             'Internal_Job_Applications': internal_job_applications,
             'Days_Since_Last_Promotion': days_since_promotion,
             'Leaves_Taken_Last_Year': leaves_taken,
             'Commute_Distance_KM': round(commute_distance, 1),
-            'Team_Size': team_size
+            'Team_Size': team_size,
+            
+            # === NEW TOP 5 ENHANCED FEATURES ===
+            'Intent_To_Stay_12Months': round(intent_to_stay_12months, 1),
+            'Engagement_Survey_Score': round(engagement_survey_score, 1),
+            'Meeting_Participation_Score': round(meeting_participation_score, 1),
+            'Time_Since_Last_Promotion_Months': time_since_last_promotion_months,
+            'Training_Completion_Rate': round(training_completion_rate, 2)
         }
         
         employees.append(employee)
@@ -137,20 +235,18 @@ def generate_realistic_employee_data():
     # Convert to DataFrame
     df = pd.DataFrame(employees)
     
-    # Create REALISTIC attrition patterns (with overlap)
-    df = create_realistic_attrition_patterns(df)
+    # Create ENHANCED attrition patterns with REALISTIC lead time calculation
+    df = create_enhanced_attrition_patterns_FIXED(df)
     
     return df
 
-def create_realistic_attrition_patterns(df):
-    """Create realistic attrition patterns with natural overlap"""
+def create_enhanced_attrition_patterns_FIXED(df):
+    """Create enhanced attrition patterns with REALISTIC lead time calculation"""
     
-    # Calculate attrition probability with REALISTIC weights
-    # Most factors should have SUBTLE influence, not perfect separation
-    
+    # Calculate attrition probability with ENHANCED weights
     attrition_prob = np.random.random(len(df)) * 0.1  # Base random component
     
-    # Add SUBTLE influences (not perfect predictors)
+    # Original influences (SUBTLE)
     attrition_prob += np.where(df['Job_Satisfaction_Score'] < 4, 0.25, 0)
     attrition_prob += np.where(df['Job_Satisfaction_Score'] < 6, 0.15, 0)
     attrition_prob += np.where(df['Market_Salary_Ratio'] < 0.85, 0.20, 0)
@@ -163,11 +259,20 @@ def create_realistic_attrition_patterns(df):
     attrition_prob += np.where(df['Avg_Work_Hours'] > 55, 0.08, 0)
     attrition_prob += np.where(df['Commute_Distance_KM'] > 25, 0.05, 0)
     
+    # ENHANCED influences (STRONGER for timeline prediction)
+    attrition_prob += np.where(df['Intent_To_Stay_12Months'] < 4, 0.35, 0)  # Strongest
+    attrition_prob += np.where(df['Intent_To_Stay_12Months'] < 6, 0.20, 0)
+    attrition_prob += np.where(df['Engagement_Survey_Score'] < 4, 0.30, 0)
+    attrition_prob += np.where(df['Engagement_Survey_Score'] < 6, 0.15, 0)
+    attrition_prob += np.where(df['Meeting_Participation_Score'] < 5, 0.20, 0)
+    attrition_prob += np.where(df['Meeting_Participation_Score'] < 7, 0.10, 0)
+    attrition_prob += np.where(df['Time_Since_Last_Promotion_Months'] > 36, 0.15, 0)
+    attrition_prob += np.where(df['Training_Completion_Rate'] < 0.5, 0.12, 0)
+    
     # Ensure probabilities are between 0 and 1
     attrition_prob = np.clip(attrition_prob, 0, 0.9)
     
     # Select employees for attrition based on probability
-    # Create a more realistic selection
     sorted_indices = np.argsort(attrition_prob)[::-1]  # Highest probability first
     
     # Take top employees but add some randomness
@@ -183,39 +288,57 @@ def create_realistic_attrition_patterns(df):
     df['Status'] = 'Active'
     df.loc[attrition_indices, 'Status'] = 'Resigned'
     
-    # Calculate resignation date and lead time for departed employees
+    # === FIXED APPROACH: REALISTIC LEAD TIME CALCULATION ===
     df['Resignation_Date'] = None
+    df['Last_Working_Day'] = None
     df['Lead_Time'] = None
+    df['Notice_Period_Type'] = None
     
     departed_mask = df['Status'] == 'Resigned'
     
-    # Generate resignation dates (within last 2 years)
-    for idx in df[departed_mask].index:
-        resignation_date = fake.date_between(start_date='-2y', end_date='-1m')
-        df.loc[idx, 'Resignation_Date'] = resignation_date
-        
-        # Calculate lead time with MORE REALISTIC patterns
-        base_lead_time = 90  # Base 3 months
-        
-        # SUBTLE adjustments (not perfect predictors)
-        satisfaction_factor = max(0, (6 - df.loc[idx, 'Job_Satisfaction_Score']) * 8)
-        salary_factor = max(0, (0.95 - df.loc[idx, 'Market_Salary_Ratio']) * 80)
-        manager_factor = max(0, (7 - df.loc[idx, 'Manager_Rating']) * 5)
-        
-        # Add randomness for realism
-        random_factor = np.random.normal(0, 20)
-        
-        lead_time = base_lead_time + satisfaction_factor + salary_factor + manager_factor + random_factor
-        lead_time = max(30, min(300, lead_time))  # Realistic range
-        
-        df.loc[idx, 'Lead_Time'] = int(lead_time)
+    print(f"🔧 Generating REALISTIC resignation timelines for {departed_mask.sum()} employees...")
     
-    # Apply MINIMAL behavioral decline for departed employees (realistic)
     for idx in df[departed_mask].index:
-        # Only SLIGHT decline, not dramatic changes
-        decline_factor = np.random.uniform(0.85, 0.95)  # Much smaller decline
+        employee_data = df.loc[idx]
         
-        # Only decline some metrics, not all
+        # Step 1: Generate resignation date (within last 2 years)
+        resignation_date = fake.date_between(start_date='-2y', end_date='-1m')
+        
+        # Step 2: Get standard notice period based on role
+        standard_notice_days, notice_type = get_standard_notice_period(
+            employee_data['Designation'], 
+            employee_data['Department']
+        )
+        
+        # Step 3: Apply realistic variations based on employee circumstances
+        actual_notice_days = apply_notice_variations(standard_notice_days, employee_data)
+        
+        # Step 4: Calculate last working day
+        last_working_day = resignation_date + timedelta(days=actual_notice_days)
+        
+        # Step 5: Store the REALISTIC data
+        df.loc[idx, 'Resignation_Date'] = resignation_date
+        df.loc[idx, 'Last_Working_Day'] = last_working_day
+        df.loc[idx, 'Lead_Time'] = actual_notice_days  # REAL LEAD TIME = LWD - Resignation Date
+        df.loc[idx, 'Notice_Period_Type'] = notice_type
+    
+    # Apply ENHANCED behavioral decline for departed employees
+    print("🔧 Applying behavioral decline patterns...")
+    for idx in df[departed_mask].index:
+        lead_time = df.loc[idx, 'Lead_Time']
+        
+        # Timeline-based decline (shorter lead time = more decline)
+        if lead_time < 30:  # Short notice - significant decline
+            decline_factor = np.random.uniform(0.6, 0.8)
+            enhanced_decline = np.random.uniform(0.5, 0.7)
+        elif lead_time < 60:  # Medium notice - moderate decline
+            decline_factor = np.random.uniform(0.75, 0.9)
+            enhanced_decline = np.random.uniform(0.7, 0.85)
+        else:  # Long notice - subtle decline
+            decline_factor = np.random.uniform(0.85, 0.95)
+            enhanced_decline = np.random.uniform(0.8, 0.95)
+        
+        # Apply decline to original features
         if np.random.random() < 0.7:  # 70% chance to have satisfaction decline
             df.loc[idx, 'Job_Satisfaction_Score'] *= decline_factor
             df.loc[idx, 'Job_Satisfaction_Score'] = max(1, df.loc[idx, 'Job_Satisfaction_Score'])
@@ -226,11 +349,28 @@ def create_realistic_attrition_patterns(df):
         
         if np.random.random() < 0.4:  # 40% chance to have more internal applications
             df.loc[idx, 'Internal_Job_Applications'] = min(3, df.loc[idx, 'Internal_Job_Applications'] + np.random.poisson(0.5))
+        
+        # Apply ENHANCED decline to TOP 5 features (stronger correlations)
+        if np.random.random() < 0.9:  # 90% chance for intent decline
+            df.loc[idx, 'Intent_To_Stay_12Months'] *= enhanced_decline
+            df.loc[idx, 'Intent_To_Stay_12Months'] = max(1, df.loc[idx, 'Intent_To_Stay_12Months'])
+        
+        if np.random.random() < 0.8:  # 80% chance for engagement decline
+            df.loc[idx, 'Engagement_Survey_Score'] *= enhanced_decline
+            df.loc[idx, 'Engagement_Survey_Score'] = max(1, df.loc[idx, 'Engagement_Survey_Score'])
+        
+        if np.random.random() < 0.7:  # 70% chance for meeting participation decline
+            df.loc[idx, 'Meeting_Participation_Score'] *= enhanced_decline
+            df.loc[idx, 'Meeting_Participation_Score'] = max(1, df.loc[idx, 'Meeting_Participation_Score'])
+        
+        if np.random.random() < 0.6:  # 60% chance for training completion decline
+            df.loc[idx, 'Training_Completion_Rate'] *= enhanced_decline
+            df.loc[idx, 'Training_Completion_Rate'] = max(0.1, df.loc[idx, 'Training_Completion_Rate'])
     
     return df
 
 def generate_business_data():
-    """Generate business performance data (same as before)"""
+    """Generate business performance data (same as original)"""
     business_data = []
     start_date = datetime.now() - timedelta(days=36*30)
     
@@ -258,7 +398,7 @@ def generate_business_data():
     return pd.DataFrame(business_data)
 
 def generate_financial_data():
-    """Generate financial indicators data (same as before)"""
+    """Generate financial indicators data (same as original)"""
     financial_data = []
     start_date = datetime.now() - timedelta(days=36*30)
     
@@ -283,103 +423,46 @@ def generate_financial_data():
     return pd.DataFrame(financial_data)
 
 # Generate all datasets
-print("Generating Employee Dataset with realistic patterns...")
-employee_df = generate_realistic_employee_data()
+print("🚀 Generating FIXED Employee Dataset with REALISTIC Lead Times...")
+print("="*70)
+employee_df = generate_enhanced_employee_data()
 
-print("Generating Business Dataset...")
 business_df = generate_business_data()
-
-print("Generating Financial Dataset...")
 financial_df = generate_financial_data()
+
+# ENHANCED SUMMARY WITH LEAD TIME ANALYSIS
+print("\n" + "="*70)
+print("📊 FIXED DATASET SUMMARY")
+print("="*70)
+
+print(f"✅ Dataset created: {len(employee_df)} employees, {len(employee_df.columns)} features")
+print(f"✅ Active: {len(employee_df[employee_df['Status'] == 'Active'])}, Resigned: {len(employee_df[employee_df['Status'] == 'Resigned'])}")
+
+# Lead time analysis
+resigned_df = employee_df[employee_df['Status'] == 'Resigned']
+if len(resigned_df) > 0:
+    print(f"\n📅 REALISTIC LEAD TIME ANALYSIS:")
+    print(f"   Average notice period: {resigned_df['Lead_Time'].mean():.1f} days")
+    print(f"   Median notice period: {resigned_df['Lead_Time'].median():.1f} days")
+    print(f"   Notice period range: {resigned_df['Lead_Time'].min():.0f} - {resigned_df['Lead_Time'].max():.0f} days")
+    
+    # Notice type distribution
+    notice_distribution = resigned_df['Notice_Period_Type'].value_counts()
+    print(f"\n   Notice Period Types:")
+    for notice_type, count in notice_distribution.items():
+        avg_days = resigned_df[resigned_df['Notice_Period_Type'] == notice_type]['Lead_Time'].mean()
+        print(f"     {notice_type}: {count} employees (avg: {avg_days:.1f} days)")
 
 # Save datasets
 employee_df.to_csv('employee_data_realistic.csv', index=False)
 business_df.to_csv('business_data.csv', index=False)
 financial_df.to_csv('financial_data.csv', index=False)
 
-# Display summary statistics
-print("\n" + "="*60)
-print("REALISTIC DATASET SUMMARY")
-print("="*60)
+print(f"\n✅ FILES SAVED:")
+print(f"   📄 employee_data_realistic.csv")
+print(f"   📄 business_data.csv") 
+print(f"   📄 financial_data.csv")
 
-print(f"\nEMPLOYEE DATA:")
-print(f"Total Employees: {len(employee_df)}")
-print(f"Active Employees: {len(employee_df[employee_df['Status'] == 'Active'])}")
-print(f"Resigned Employees: {len(employee_df[employee_df['Status'] == 'Resigned'])}")
-
-# Analyze realistic patterns
-active_df = employee_df[employee_df['Status'] == 'Active']
-resigned_df = employee_df[employee_df['Status'] == 'Resigned']
-
-print(f"\nREALISTIC PATTERN ANALYSIS:")
-print(f"Job Satisfaction - Active: {active_df['Job_Satisfaction_Score'].mean():.1f}, Resigned: {resigned_df['Job_Satisfaction_Score'].mean():.1f}")
-print(f"Market Salary Ratio - Active: {active_df['Market_Salary_Ratio'].mean():.2f}, Resigned: {resigned_df['Market_Salary_Ratio'].mean():.2f}")
-print(f"Manager Rating - Active: {active_df['Manager_Rating'].mean():.1f}, Resigned: {resigned_df['Manager_Rating'].mean():.1f}")
-
-# Check overlap (this should be significant for realistic data)
-low_sat_active = len(active_df[active_df['Job_Satisfaction_Score'] < 5])
-low_sat_resigned = len(resigned_df[resigned_df['Job_Satisfaction_Score'] < 5])
-print(f"\nOVERLAP ANALYSIS (indicates realism):")
-print(f"Active employees with low satisfaction (<5): {low_sat_active}")
-print(f"Resigned employees with low satisfaction (<5): {low_sat_resigned}")
-
-# Lead time analysis
-lead_times = resigned_df['Lead_Time'].dropna()
-print(f"\nLEAD TIME ANALYSIS:")
-print(f"Average: {lead_times.mean():.0f} days")
-print(f"Range: {lead_times.min():.0f} - {lead_times.max():.0f} days")
-print(f"Std: {lead_times.std():.0f} days")
-
-print("\n" + "="*60)
-print("REALISTIC FILES SAVED:")
-print("- employee_data_realistic.csv")
-print("- business_data.csv (updated)")
-print("- financial_data.csv (updated)")
-print("="*60)
-
-# Calculate risk distribution for dashboard validation
-print(f"\nRISK DISTRIBUTION VALIDATION:")
-active_employees = employee_df[employee_df['Status'] == 'Active']
-
-# Calculate risk scores using the same formula as dashboard
-risk_scores = (
-    (10 - active_employees['Job_Satisfaction_Score']) / 10 * 0.3 +
-    (1 - active_employees['Market_Salary_Ratio']) * 0.25 +
-    (10 - active_employees['Manager_Rating']) / 10 * 0.2 +
-    (active_employees['Days_Since_Last_Promotion'] / 1000) * 0.15 +
-    (active_employees['Internal_Job_Applications'] / 5) * 0.1
-)
-
-print(f"Risk Score Statistics:")
-print(f"Min: {risk_scores.min():.3f}")
-print(f"Max: {risk_scores.max():.3f}")
-print(f"Mean: {risk_scores.mean():.3f}")
-print(f"50th percentile: {np.percentile(risk_scores, 50):.3f}")
-print(f"70th percentile: {np.percentile(risk_scores, 70):.3f}")
-print(f"80th percentile: {np.percentile(risk_scores, 80):.3f}")
-
-# Recommended thresholds
-high_threshold = np.percentile(risk_scores, 80)
-medium_threshold = np.percentile(risk_scores, 50)
-
-print(f"\nRECOMMENDED DASHBOARD THRESHOLDS:")
-print(f"High Risk: > {high_threshold:.2f}")
-print(f"Medium Risk: {medium_threshold:.2f} - {high_threshold:.2f}")
-print(f"Low Risk: < {medium_threshold:.2f}")
-
-high_risk_count = len(risk_scores[risk_scores > high_threshold])
-medium_risk_count = len(risk_scores[(risk_scores > medium_threshold) & (risk_scores <= high_threshold)])
-low_risk_count = len(risk_scores[risk_scores <= medium_threshold])
-
-print(f"\nEXPECTED COUNTS WITH NEW THRESHOLDS:")
-print(f"High Risk: {high_risk_count}")
-print(f"Medium Risk: {medium_risk_count}")
-print(f"Low Risk: {low_risk_count}")
-
-print(f"\n🎯 NEXT STEPS:")
-print("1. Use 'employee_data_realistic.csv' for modeling")
-print("2. Update dashboard risk thresholds to:")
-print(f"   - High: > {high_threshold:.2f}")
-print(f"   - Medium: {medium_threshold:.2f} - {high_threshold:.2f}")
-print("3. Fix dashboard plotting errors")
-print("4. Expect more realistic model performance (AUC 0.70-0.85)")
+print("="*70)
+print("🚀 READY FOR FIXED ATTRITION MODELING!")
+print("="*70)
