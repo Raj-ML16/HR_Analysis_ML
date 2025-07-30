@@ -1,0 +1,161 @@
+{
+  "attrition": {
+    "metrics": {
+      "high_risk_count": 6,
+      "medium_risk_count": 21,
+      "low_risk_count": 2078,
+      "avg_notice_period": "76.2"
+    },
+    "high_risk_employees": [
+      {
+        "name": "Mrs. Christine George",
+        "department": "Marketing",
+        "risk": 0.9340000152587891,
+        "departure": "2025-12-29",
+        "notice": 70,
+        "risk_factors": "Low job satisfaction, Manager relationship issues"
+      },
+      {
+        "name": "Robin Carlson",
+        "department": "Sales",
+        "risk": 0.7649999856948853,
+        "departure": "2025-11-20",
+        "notice": 60,
+        "risk_factors": "Moderate job satisfaction, Manager relationship issues"
+      },
+      {
+        "name": "Michael Sanchez",
+        "department": "Finance",
+        "risk": 0.8009999990463257,
+        "departure": "2025-11-26",
+        "notice": 67,
+        "risk_factors": "Moderate job satisfaction, Internal job search activity"
+      },
+      {
+        "name": "Michael Walker",
+        "department": "Sales",
+        "risk": 0.7139999866485596,
+        "departure": "2026-01-18",
+        "notice": 88,
+        "risk_factors": "Moderate job satisfaction, Manager relationship issues"
+      },
+      {
+        "name": "Shannon West",
+        "department": "Finance",
+        "risk": 0.8019999861717224,
+        "departure": "2025-12-07",
+        "notice": 68,
+        "risk_factors": "Low retention intent, Manager relationship issues"
+      },
+      {
+        "name": "Tina Gonzalez",
+        "department": "Marketing",
+        "risk": 0.8230000138282776,
+        "departure": "2026-01-04",
+        "notice": 88,
+        "risk_factors": "Low job satisfaction, Manager relationship issues"
+      }
+    ],
+    "department_risk": {
+      "Finance": {
+        "high": 2,
+        "medium": 4,
+        "low": 358
+      },
+      "Sales": {
+        "high": 2,
+        "medium": 3,
+        "low": 348
+      },
+      "Marketing": {
+        "high": 2,
+        "medium": 5,
+        "low": 348
+      },
+      "HR": {
+        "high": 0,
+        "medium": 2,
+        "low": 336
+      },
+      "Operations": {
+        "high": 0,
+        "medium": 3,
+        "low": 341
+      },
+      "Engineering": {
+        "high": 0,
+        "medium": 4,
+        "low": 347
+      }
+    },
+    "timeline_data": [
+      {
+        "month": "2025-10",
+        "departures": 1
+      },
+      {
+        "month": "2025-11",
+        "departures": 2
+      },
+      {
+        "month": "2025-12",
+        "departures": 4
+      },
+      {
+        "month": "2026-01",
+        "departures": 6
+      },
+      {
+        "month": "2026-02",
+        "departures": 5
+      },
+      {
+        "month": "2026-03",
+        "departures": 50
+      },
+      {
+        "month": "2026-04",
+        "departures": 158
+      },
+      {
+        "month": "2026-05",
+        "departures": 341
+      },
+      {
+        "month": "2026-06",
+        "departures": 328
+      },
+      {
+        "month": "2026-07",
+        "departures": 346
+      },
+      {
+        "month": "2026-08",
+        "departures": 362
+      },
+      {
+        "month": "2026-09",
+        "departures": 290
+      },
+      {
+        "month": "2026-10",
+        "departures": 199
+      },
+      {
+        "month": "2026-11",
+        "departures": 13
+      }
+    ]
+  },
+  "model_performance": {
+    "best_classification_model": "XGBoost",
+    "classification_auc": 0.9483273398001566,
+    "best_regression_model": "XGBoost Regressor",
+    "regression_r2": 0.7326065764895747
+  },
+  "metadata": {
+    "total_employees": 2105,
+    "generation_timestamp": "2025-07-30T17:31:11.964798",
+    "data_source": "real_ml_predictions"
+  }
+}

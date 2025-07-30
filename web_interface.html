@@ -66,11 +66,52 @@
             animation: pulse 2s infinite;
         }
 
+        .status-dot.error {
+            background: #e74c3c;
+        }
+
+        .status-dot.warning {
+            background: #f39c12;
+        }
+
         @keyframes pulse {
             0% { opacity: 1; }
             50% { opacity: 0.5; }
             100% { opacity: 1; }
         }
+
+        .system-health {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        .module-status {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .module-status:last-child {
+            border-bottom: none;
+        }
+
+        .status-icon {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 10px;
+        }
+
+        .status-success { background: #27ae60; }
+        .status-error { background: #e74c3c; }
+        .status-warning { background: #f39c12; }
 
         .control-panel {
             background: rgba(255, 255, 255, 0.1);
@@ -116,6 +157,11 @@
             background: rgba(255, 255, 255, 0.15);
         }
 
+        .nav-tab:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         .btn {
             padding: 10px 20px;
             border: none;
@@ -141,7 +187,7 @@
             color: white;
         }
 
-        .btn:hover {
+        .btn:hover:not(:disabled) {
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
         }
@@ -198,6 +244,32 @@
             display: flex;
             align-items: center;
             gap: 10px;
+        }
+
+        .error-state {
+            text-align: center;
+            padding: 40px;
+            color: #5a6c7d;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 4px solid #e74c3c;
+        }
+
+        .error-state h3 {
+            color: #e74c3c;
+            margin-bottom: 15px;
+        }
+
+        .error-state p {
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+
+        .error-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
         }
 
         .metric-card {
@@ -260,8 +332,6 @@
         .badge-high { background: #fee; color: #c53030; }
         .badge-medium { background: #fffbeb; color: #d69e2e; }
         .badge-low { background: #f0fff4; color: #38a169; }
-        .badge-critical { background: #fed7d7; color: #e53e3e; }
-        .badge-normal { background: #e6fffa; color: #319795; }
 
         .chart-container {
             position: relative;
@@ -333,39 +403,13 @@
             color: #721c24;
         }
 
-        .timeline-item {
-            display: flex;
-            align-items: center;
-            padding: 15px;
-            border-left: 3px solid #667eea;
-            margin-bottom: 15px;
-            background: #f8f9fa;
-            border-radius: 0 8px 8px 0;
+        .risk-factors {
+            font-size: 0.85rem;
+            color: #5a6c7d;
+            font-style: italic;
+            max-width: 200px;
+            line-height: 1.3;
         }
-
-        .timeline-date {
-            font-weight: bold;
-            color: #667eea;
-            min-width: 100px;
-        }
-
-        .timeline-content {
-            flex: 1;
-            margin-left: 15px;
-        }
-
-        .priority-indicator {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 8px;
-        }
-
-        .priority-critical { background: #e74c3c; }
-        .priority-high { background: #f39c12; }
-        .priority-normal { background: #27ae60; }
-        .priority-low { background: #95a5a6; }
 
         @media (max-width: 768px) {
             .container { padding: 10px; }
@@ -373,6 +417,7 @@
             .nav-tabs { flex-direction: column; }
             .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
             .control-panel { flex-direction: column; align-items: stretch; }
+            .error-actions { flex-direction: column; }
         }
     </style>
 </head>
@@ -383,7 +428,15 @@
             <p>Comprehensive workforce planning with AI-powered predictions for attrition, hiring timelines, and business growth alignment</p>
             <div class="status-indicator">
                 <div class="status-dot" id="statusDot"></div>
-                <span id="statusText">System Ready</span>
+                <span id="statusText">Connecting...</span>
+            </div>
+        </div>
+
+        <!-- System Health Panel -->
+        <div class="system-health" id="systemHealth">
+            <h4>📊 Data Pipeline Status</h4>
+            <div id="moduleStatusContainer">
+                <div class="loading">Checking system status...</div>
             </div>
         </div>
 
@@ -395,270 +448,48 @@
         </div>
 
         <div class="nav-tabs">
-            <button class="nav-tab active" onclick="showTab('attrition')">👥 Attrition Prediction</button>
-            <button class="nav-tab" onclick="showTab('hiring')">🎯 Hiring Timeline</button>
-            <button class="nav-tab" onclick="showTab('optimization')">⚡ Timeline Optimization</button>
-            <button class="nav-tab" onclick="showTab('growth')">📈 Business Growth</button>
+            <button class="nav-tab active" onclick="showTab('attrition')" id="attritionTab">👥 Attrition Prediction</button>
+            <button class="nav-tab" onclick="showTab('hiring')" id="hiringTab">🎯 Hiring Timeline</button>
+            <button class="nav-tab" onclick="showTab('optimization')" id="optimizationTab">⚡ Timeline Optimization</button>
+            <button class="nav-tab" onclick="showTab('growth')" id="growthTab">📈 Business Growth</button>
         </div>
 
         <!-- Attrition Prediction Tab -->
         <div id="attrition" class="tab-content active">
-            <div class="dashboard-grid grid-4">
-                <div class="card metric-card">
-                    <div class="metric-value risk-high" id="highRiskCount">Loading...</div>
-                    <div class="metric-label">High Risk Employees</div>
-                </div>
-                <div class="card metric-card">
-                    <div class="metric-value risk-medium" id="mediumRiskCount">Loading...</div>
-                    <div class="metric-label">Medium Risk Employees</div>
-                </div>
-                <div class="card metric-card">
-                    <div class="metric-value risk-low" id="lowRiskCount">Loading...</div>
-                    <div class="metric-label">Low Risk Employees</div>
-                </div>
-                <div class="card metric-card">
-                    <div class="metric-value" style="color: #667eea;" id="avgNotice">Loading...</div>
-                    <div class="metric-label">Avg Notice Period (days)</div>
-                </div>
-            </div>
-
-            <div class="dashboard-grid grid-2">
-                <div class="card">
-                    <h3>🚨 High Risk Employees</h3>
-                    <button class="export-btn" onclick="exportData('attrition')">📤 Export</button>
-                    <div class="table-container">
-                        <table id="highRiskTable">
-                            <thead>
-                                <tr>
-                                    <th>Employee</th>
-                                    <th>Department</th>
-                                    <th>Risk %</th>
-                                    <th>Est. Departure</th>
-                                    <th>Notice Period</th>
-                                </tr>
-                            </thead>
-                            <tbody id="highRiskTableBody">
-                                <tr><td colspan="5" class="loading">Loading data...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <h3>📊 Risk Distribution by Department</h3>
-                    <div class="chart-container">
-                        <canvas id="riskByDeptChart"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card">
-                <h3>🔮 Attrition Timeline</h3>
-                <div class="chart-container">
-                    <canvas id="attritionTimelineChart"></canvas>
+            <div id="attritionContent">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    Loading attrition data...
                 </div>
             </div>
         </div>
 
         <!-- Hiring Timeline Tab -->
         <div id="hiring" class="tab-content">
-            <div class="alert alert-info">
-                <strong>📋 Hiring Intelligence:</strong> Based on ML predictions and business growth analysis
-            </div>
-
-            <div class="dashboard-grid grid-3">
-                <div class="card metric-card">
-                    <div class="metric-value" style="color: #e74c3c;" id="replacementHires">Loading...</div>
-                    <div class="metric-label">Replacement Hires Needed</div>
-                </div>
-                <div class="card metric-card">
-                    <div class="metric-value" style="color: #27ae60;" id="growthHires">Loading...</div>
-                    <div class="metric-label">Growth Hires Planned</div>
-                </div>
-                <div class="card metric-card">
-                    <div class="metric-value" style="color: #f39c12;" id="immediateActions">Loading...</div>
-                    <div class="metric-label">Immediate Actions</div>
-                </div>
-            </div>
-
-            <div class="dashboard-grid grid-2">
-                <div class="card">
-                    <h3>🚨 Immediate Hiring Actions</h3>
-                    <button class="export-btn" onclick="exportData('hiring')">📤 Export</button>
-                    <div class="table-container">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Employee</th>
-                                    <th>Department</th>
-                                    <th>Priority</th>
-                                    <th>Action Status</th>
-                                    <th>Departure Date</th>
-                                </tr>
-                            </thead>
-                            <tbody id="immediateActionsTable">
-                                <tr><td colspan="5" class="loading">Loading data...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <h3>📈 Hiring by Department</h3>
-                    <div class="chart-container">
-                        <canvas id="hiringByDeptChart"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card">
-                <h3>📅 Hiring Timeline</h3>
-                <div id="hiringTimelineContainer">
-                    <div class="loading">Loading timeline...</div>
+            <div id="hiringContent">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    Loading hiring data...
                 </div>
             </div>
         </div>
 
         <!-- Timeline Optimization Tab -->
         <div id="optimization" class="tab-content">
-            <div class="alert alert-warning">
-                <strong>⚡ Optimization Goal:</strong> Zero resource gaps by optimizing hiring start dates considering lead times
-            </div>
-
-            <div class="dashboard-grid grid-4">
-                <div class="card metric-card">
-                    <div class="metric-value" style="color: #27ae60;" id="optimizedPositions">Loading...</div>
-                    <div class="metric-label">Positions Optimized</div>
-                </div>
-                <div class="card metric-card">
-                    <div class="metric-value" style="color: #667eea;" id="avgLeadTime">Loading...</div>
-                    <div class="metric-label">Avg Lead Time (days)</div>
-                </div>
-                <div class="card metric-card">
-                    <div class="metric-value" style="color: #e74c3c;" id="urgentOptimizations">Loading...</div>
-                    <div class="metric-label">Urgent Start Required</div>
-                </div>
-                <div class="card metric-card">
-                    <div class="metric-value" style="color: #27ae60;" id="gapDaysEliminated">Loading...</div>
-                    <div class="metric-label">Gap Days Eliminated</div>
-                </div>
-            </div>
-
-            <div class="dashboard-grid grid-2">
-                <div class="card">
-                    <h3>⚡ Urgent Optimizations</h3>
-                    <button class="export-btn" onclick="exportData('optimization')">📤 Export</button>
-                    <div class="table-container">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Employee</th>
-                                    <th>Department</th>
-                                    <th>Departure Date</th>
-                                    <th>Optimal Start</th>
-                                    <th>Days Until Action</th>
-                                </tr>
-                            </thead>
-                            <tbody id="urgentOptimizationsTable">
-                                <tr><td colspan="5" class="loading">Loading data...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <h3>📊 Lead Times by Department</h3>
-                    <div class="chart-container">
-                        <canvas id="leadTimeChart"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card">
-                <h3>🔧 Optimization Results</h3>
-                <button class="btn btn-primary" onclick="runOptimization()">🔄 Re-run Optimization</button>
-                <div class="table-container" style="margin-top: 20px;">
-                    <table id="optimizationResultsTable">
-                        <thead>
-                            <tr>
-                                <th>Employee</th>
-                                <th>Department</th>
-                                <th>Departure Date</th>
-                                <th>Optimal Start</th>
-                                <th>New Employee Ready</th>
-                                <th>Resource Gap</th>
-                                <th>Lead Time</th>
-                                <th>Action Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="optimizationResultsBody">
-                            <tr><td colspan="8" class="loading">Loading optimization results...</td></tr>
-                        </tbody>
-                    </table>
+            <div id="optimizationContent">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    Loading optimization data...
                 </div>
             </div>
         </div>
 
         <!-- Business Growth Tab -->
         <div id="growth" class="tab-content">
-            <div class="dashboard-grid grid-3">
-                <div class="card metric-card">
-                    <div class="metric-value" style="color: #27ae60;" id="financialHealth">Loading...</div>
-                    <div class="metric-label">Financial Health Score</div>
-                </div>
-                <div class="card metric-card">
-                    <div class="metric-value" style="color: #667eea;" id="growthRate">Loading...</div>
-                    <div class="metric-label">Enhanced Growth Rate</div>
-                </div>
-                <div class="card metric-card">
-                    <div class="metric-value" style="color: #27ae60;" id="hiringBudget">Loading...</div>
-                    <div class="metric-label">Monthly Hiring Budget</div>
-                </div>
-            </div>
-
-            <div class="dashboard-grid grid-2">
-                <div class="card">
-                    <h3>🏢 Department Growth Priorities</h3>
-                    <button class="export-btn" onclick="exportData('growth')">📤 Export</button>
-                    <div class="table-container">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Department</th>
-                                    <th>Current Size</th>
-                                    <th>Priority Multiplier</th>
-                                    <th>Growth Hires</th>
-                                    <th>Monthly Cost</th>
-                                </tr>
-                            </thead>
-                            <tbody id="growthPrioritiesTable">
-                                <tr><td colspan="5" class="loading">Loading growth data...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <h3>📈 Financial Health Indicators</h3>
-                    <div class="chart-container">
-                        <canvas id="financialHealthChart"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <div class="dashboard-grid grid-2">
-                <div class="card">
-                    <h3>💰 Budget Utilization</h3>
-                    <div class="chart-container">
-                        <canvas id="budgetUtilizationChart"></canvas>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <h3>🎯 Growth Strategy Recommendations</h3>
-                    <div id="growthRecommendations">
-                        <div class="loading">Loading recommendations...</div>
-                    </div>
+            <div id="growthContent">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    Loading growth data...
                 </div>
             </div>
         </div>
@@ -680,15 +511,12 @@
 
         async function initializeDashboard() {
             try {
-                showLoading(true);
                 await checkSystemStatus();
                 await loadDashboardData();
-                showLoading(false);
                 console.log('✅ Dashboard initialized successfully');
             } catch (error) {
                 console.error('❌ Dashboard initialization failed:', error);
-                showError('Failed to initialize dashboard. Please check if the API server is running.');
-                showLoading(false);
+                showError('Failed to initialize dashboard. Please check system status.');
             }
         }
 
@@ -697,260 +525,283 @@
                 const response = await fetch(`${API_BASE_URL}/status`);
                 const status = await response.json();
                 
-                updateStatusIndicator(status.system === 'operational');
+                updateStatusIndicator(status);
+                updateSystemHealth(status);
                 
                 if (status.last_updated && status.last_updated !== 'never') {
                     document.getElementById('lastUpdated').textContent = 
                         `Last updated: ${new Date(status.last_updated).toLocaleString()}`;
                 }
                 
-                console.log('📊 System Status:', status);
             } catch (error) {
-                console.error('⚠️ Status check failed:', error);
-                updateStatusIndicator(false);
+                console.error('Status check failed:', error);
+                updateStatusIndicator({ system: 'error' });
             }
         }
 
-        function updateStatusIndicator(isHealthy) {
+        function updateStatusIndicator(status) {
             const dot = document.getElementById('statusDot');
             const text = document.getElementById('statusText');
             
-            if (isHealthy) {
-                dot.style.background = '#27ae60';
-                text.textContent = 'System Ready';
+            if (status.system === 'operational' && status.data_status?.system_ready) {
+                dot.className = 'status-dot';
+                text.textContent = 'All Systems Ready';
                 text.style.color = 'white';
+            } else if (status.system === 'operational') {
+                dot.className = 'status-dot warning';
+                text.textContent = 'Partial Data Available';
+                text.style.color = '#f39c12';
             } else {
-                dot.style.background = '#e74c3c';
-                text.textContent = 'System Error';
-                text.style.color = '#ffcccb';
+                dot.className = 'status-dot error';
+                text.textContent = 'System Issues';
+                text.style.color = '#e74c3c';
             }
+        }
+
+        function updateSystemHealth(status) {
+            const container = document.getElementById('moduleStatusContainer');
+            
+            const modules = [
+                { name: 'Attrition Prediction', key: 'attrition', files: status.data_files?.attrition || 0 },
+                { name: 'Hiring Timeline', key: 'hiring', files: status.data_files?.hiring || 0 },
+                { name: 'Timeline Optimization', key: 'optimization', files: status.data_files?.optimization || 0 },
+                { name: 'Business Growth', key: 'growth', files: status.data_files?.growth || 0 }
+            ];
+            
+            container.innerHTML = '';
+            
+            modules.forEach(module => {
+                const moduleDiv = document.createElement('div');
+                moduleDiv.className = 'module-status';
+                
+                let statusClass = 'status-error';
+                let statusText = 'No data files found';
+                let tabDisabled = true;
+                
+                if (module.files > 0) {
+                    statusClass = 'status-success';
+                    statusText = `${module.files} data file(s) available`;
+                    tabDisabled = false;
+                }
+                
+                moduleDiv.innerHTML = `
+                    <span>
+                        <span class="status-icon ${statusClass}"></span>
+                        ${module.name}
+                    </span>
+                    <span>${statusText}</span>
+                `;
+                
+                container.appendChild(moduleDiv);
+                
+                // Enable/disable tabs based on data availability
+                const tab = document.getElementById(`${module.key}Tab`);
+                if (tab) {
+                    tab.disabled = tabDisabled;
+                }
+            });
         }
 
         async function loadDashboardData() {
             try {
-                console.log('📊 Loading dashboard data...');
                 const response = await fetch(`${API_BASE_URL}/dashboard-summary`);
                 
                 if (!response.ok) {
-                    throw new Error(`API Error: ${response.status}`);
+                    throw new Error(`API Error: ${response.status} - ${response.statusText}`);
                 }
                 
                 dashboardData = await response.json();
-                console.log('✅ Data loaded:', dashboardData);
                 
+                // Update each tab based on data status
                 updateAttritionTab(dashboardData.attrition);
                 updateHiringTab(dashboardData.hiring);
                 updateOptimizationTab(dashboardData.optimization);
                 updateGrowthTab(dashboardData.growth);
                 
-                // Initialize charts for active tab
-                setTimeout(() => {
-                    initializeAttritionCharts();
-                }, 500);
-                
             } catch (error) {
-                console.error('❌ Failed to load dashboard data:', error);
-                showError('Failed to load data. Using sample data for demonstration.');
-                // Load sample data as fallback
-                loadSampleData();
+                console.error('Failed to load dashboard data:', error);
+                throw error;
             }
         }
 
         function updateAttritionTab(data) {
-            if (!data || !data.metrics) return;
+            const container = document.getElementById('attritionContent');
             
-            document.getElementById('highRiskCount').textContent = data.metrics.high_risk_count || 0;
-            document.getElementById('mediumRiskCount').textContent = data.metrics.medium_risk_count || 0;
-            document.getElementById('lowRiskCount').textContent = data.metrics.low_risk_count || 0;
-            document.getElementById('avgNotice').textContent = data.metrics.avg_notice_period || 'N/A';
-            
-            // Update high risk table
-            const tbody = document.getElementById('highRiskTableBody');
-            tbody.innerHTML = '';
-            
-            if (data.high_risk_employees && data.high_risk_employees.length > 0) {
-                data.high_risk_employees.forEach(emp => {
-                    const row = tbody.insertRow();
-                    row.innerHTML = `
-                        <td>${emp.name}</td>
-                        <td>${emp.department}</td>
-                        <td><span class="status-badge badge-high">${(emp.risk * 100).toFixed(0)}%</span></td>
-                        <td>${emp.departure}</td>
-                        <td>${emp.notice} days</td>
-                    `;
-                });
-            } else {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No high-risk employees found</td></tr>';
+            if (data.status === 'error') {
+                container.innerHTML = createErrorState(
+                    'Attrition Prediction Data Not Available',
+                    data.message,
+                    [
+                        { text: 'Run Attrition Model', action: 'runAttritionModel()', primary: true },
+                        { text: 'Check File Location', action: 'showFileHelp("attrition")' }
+                    ],
+                    data
+                );
+                return;
             }
+            
+            // Create successful attrition display
+            container.innerHTML = `
+                <div class="dashboard-grid grid-4">
+                    <div class="card metric-card">
+                        <div class="metric-value risk-high">${data.metrics.high_risk_count}</div>
+                        <div class="metric-label">High Risk Employees</div>
+                    </div>
+                    <div class="card metric-card">
+                        <div class="metric-value risk-medium">${data.metrics.medium_risk_count}</div>
+                        <div class="metric-label">Medium Risk Employees</div>
+                    </div>
+                    <div class="card metric-card">
+                        <div class="metric-value risk-low">${data.metrics.low_risk_count}</div>
+                        <div class="metric-label">Low Risk Employees</div>
+                    </div>
+                    <div class="card metric-card">
+                        <div class="metric-value" style="color: #667eea;">${data.metrics.avg_notice_period}</div>
+                        <div class="metric-label">Avg Notice Period (days)</div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid grid-2">
+                    <div class="card">
+                        <h3>🚨 High Risk Employees</h3>
+                        <button class="export-btn" onclick="exportData('attrition')">📤 Export</button>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Employee</th>
+                                        <th>Department</th>
+                                        <th>Risk %</th>
+                                        <th>Est. Departure</th>
+                                        <th>Notice Period</th>
+                                        <th>Risk Factors</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${data.high_risk_employees.map(emp => `
+                                        <tr>
+                                            <td>${emp.name}</td>
+                                            <td>${emp.department}</td>
+                                            <td><span class="status-badge badge-high">${Math.round(emp.risk * 100)}%</span></td>
+                                            <td>${emp.departure}</td>
+                                            <td>${emp.notice} days</td>
+                                            <td><div class="risk-factors">${emp.risk_factors}</div></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>📊 Risk Distribution by Department</h3>
+                        <div class="chart-container">
+                            <canvas id="riskByDeptChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>🔮 Attrition Timeline</h3>
+                    <div class="chart-container">
+                        <canvas id="attritionTimelineChart"></canvas>
+                    </div>
+                </div>
+            `;
+            
+            // Initialize charts
+            setTimeout(() => initializeAttritionCharts(data), 100);
+            
+            showAlert('success', `✅ Attrition data loaded from: ${data.source_file}`);
         }
 
         function updateHiringTab(data) {
-            if (!data || !data.metrics) return;
+            const container = document.getElementById('hiringContent');
             
-            document.getElementById('replacementHires').textContent = data.metrics.total_replacement_hires || 0;
-            document.getElementById('growthHires').textContent = data.metrics.total_growth_hires || 0;
-            document.getElementById('immediateActions').textContent = data.metrics.immediate_actions || 0;
-            
-            // Update immediate actions table
-            const tbody = document.getElementById('immediateActionsTable');
-            tbody.innerHTML = '';
-            
-            if (data.immediate_actions && data.immediate_actions.length > 0) {
-                data.immediate_actions.forEach(action => {
-                    const row = tbody.insertRow();
-                    const priorityClass = action.priority.toLowerCase();
-                    row.innerHTML = `
-                        <td>${action.name}</td>
-                        <td>${action.department}</td>
-                        <td><span class="status-badge badge-${priorityClass}">${action.priority}</span></td>
-                        <td>${action.status}</td>
-                        <td>${action.departure}</td>
-                    `;
-                });
-            } else {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No immediate actions required</td></tr>';
+            if (data.status === 'error') {
+                container.innerHTML = createErrorState(
+                    'Hiring Timeline Data Not Available',
+                    data.message,
+                    [
+                        { text: 'Run Hiring Calculator', action: 'runHiringCalculation()', primary: true },
+                        { text: 'Run Attrition Model First', action: 'runAttritionModel()' }
+                    ],
+                    data
+                );
+                return;
             }
             
-            // Update timeline
-            updateHiringTimeline(data.timeline_items);
-        }
-
-        function updateHiringTimeline(timelineItems) {
-            const container = document.getElementById('hiringTimelineContainer');
-            container.innerHTML = '';
-            
-            if (timelineItems && timelineItems.length > 0) {
-                timelineItems.forEach(item => {
-                    const timelineItem = document.createElement('div');
-                    timelineItem.className = 'timeline-item';
-                    timelineItem.innerHTML = `
-                        <div class="timeline-date">${item.date}</div>
-                        <div class="timeline-content">
-                            <div class="priority-indicator priority-${item.priority}"></div>
-                            ${item.content}
-                        </div>
-                    `;
-                    container.appendChild(timelineItem);
-                });
-            } else {
-                container.innerHTML = '<div class="loading">No timeline items available</div>';
-            }
+            container.innerHTML = '<div class="loading">Hiring data processing...</div>';
+            // Add hiring data display logic here
         }
 
         function updateOptimizationTab(data) {
-            if (!data || !data.metrics) return;
+            const container = document.getElementById('optimizationContent');
             
-            document.getElementById('optimizedPositions').textContent = data.metrics.total_optimized || 0;
-            document.getElementById('avgLeadTime').textContent = data.metrics.avg_lead_time || 0;
-            document.getElementById('urgentOptimizations').textContent = data.metrics.urgent_optimizations || 0;
-            document.getElementById('gapDaysEliminated').textContent = data.metrics.gap_days_eliminated || 0;
-            
-            // Update urgent optimizations table
-            const tbody = document.getElementById('urgentOptimizationsTable');
-            tbody.innerHTML = '';
-            
-            if (data.urgent_optimizations && data.urgent_optimizations.length > 0) {
-                data.urgent_optimizations.forEach(opt => {
-                    const row = tbody.insertRow();
-                    const statusClass = opt.days_until <= 0 ? 'risk-high' : 'risk-medium';
-                    row.innerHTML = `
-                        <td>${opt.name}</td>
-                        <td>${opt.department}</td>
-                        <td>${opt.departure}</td>
-                        <td>${opt.optimal_start}</td>
-                        <td class="${statusClass}">${opt.days_until} days</td>
-                    `;
-                });
-            } else {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No urgent optimizations needed</td></tr>';
+            if (data.status === 'error') {
+                container.innerHTML = createErrorState(
+                    'Timeline Optimization Data Not Available',
+                    data.message,
+                    [
+                        { text: 'Run Timeline Optimization', action: 'runOptimization()', primary: true },
+                        { text: 'Run Hiring Calculator First', action: 'runHiringCalculation()' }
+                    ],
+                    data
+                );
+                return;
             }
             
-            // Update optimization results table
-            updateOptimizationResults(data.optimization_results);
-        }
-
-        function updateOptimizationResults(results) {
-            const tbody = document.getElementById('optimizationResultsBody');
-            tbody.innerHTML = '';
-            
-            if (results && results.length > 0) {
-                results.forEach(result => {
-                    const row = tbody.insertRow();
-                    const statusClass = result.status.includes('overdue') ? 'risk-high' : 
-                                      result.status.includes('NOW') ? 'risk-medium' : 'risk-low';
-                    row.innerHTML = `
-                        <td>${result.name}</td>
-                        <td>${result.department}</td>
-                        <td>${result.departure}</td>
-                        <td>${result.optimal_start}</td>
-                        <td>${result.new_ready}</td>
-                        <td class="risk-low">${result.gap} days</td>
-                        <td>${result.lead_time} days</td>
-                        <td class="${statusClass}">${result.status}</td>
-                    `;
-                });
-            } else {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">No optimization results available</td></tr>';
-            }
+            container.innerHTML = '<div class="loading">Optimization data processing...</div>';
         }
 
         function updateGrowthTab(data) {
-            if (!data || !data.metrics) return;
+            const container = document.getElementById('growthContent');
             
-            document.getElementById('financialHealth').textContent = data.metrics.financial_health_score || 0;
-            document.getElementById('growthRate').textContent = data.metrics.growth_rate || 'N/A';
-            document.getElementById('hiringBudget').textContent = data.metrics.hiring_budget || 'N/A';
-            
-            // Update growth priorities table
-            const tbody = document.getElementById('growthPrioritiesTable');
-            tbody.innerHTML = '';
-            
-            if (data.growth_priorities && data.growth_priorities.length > 0) {
-                data.growth_priorities.forEach(dept => {
-                    const row = tbody.insertRow();
-                    const priorityClass = dept.multiplier > 1.2 ? 'risk-high' : 
-                                        dept.multiplier > 1.0 ? 'risk-medium' : 'risk-low';
-                    row.innerHTML = `
-                        <td>${dept.department}</td>
-                        <td>${dept.current_size}</td>
-                        <td class="${priorityClass}">${dept.multiplier}x</td>
-                        <td>${dept.growth_hires}</td>
-                        <td>${dept.monthly_cost.toLocaleString()}</td>
-                    `;
-                });
-            } else {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No growth data available</td></tr>';
+            if (data.status === 'error') {
+                container.innerHTML = createErrorState(
+                    'Business Growth Data Not Available',
+                    data.message,
+                    [
+                        { text: 'Run Growth Analysis', action: 'runGrowthAnalysis()', primary: true }
+                    ],
+                    data
+                );
+                return;
             }
             
-            // Update recommendations
-            updateGrowthRecommendations(data.recommendations);
+            container.innerHTML = '<div class="loading">Growth data processing...</div>';
         }
 
-        function updateGrowthRecommendations(recommendations) {
-            const container = document.getElementById('growthRecommendations');
-            container.innerHTML = '';
+        function createErrorState(title, message, actions, errorData) {
+            const actionButtons = actions.map(action => 
+                `<button class="btn ${action.primary ? 'btn-primary' : 'btn-secondary'}" onclick="${action.action}">${action.text}</button>`
+            ).join('');
             
-            if (recommendations && recommendations.length > 0) {
-                recommendations.forEach(rec => {
-                    const div = document.createElement('div');
-                    div.className = `alert alert-${rec.type === 'critical' ? 'warning' : 'info'}`;
-                    div.innerHTML = `<strong>${rec.type.toUpperCase()}:</strong> ${rec.text}`;
-                    container.appendChild(div);
-                });
-            } else {
-                container.innerHTML = '<div class="loading">No recommendations available</div>';
-            }
+            const detailsSection = errorData.action_required ? 
+                `<div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; text-align: left;">
+                    <h4>📋 Action Required:</h4>
+                    <p>${errorData.action_required}</p>
+                    ${errorData.expected_file_pattern ? `<p><strong>Expected file:</strong> ${errorData.expected_file_pattern}</p>` : ''}
+                </div>` : '';
+            
+            return `
+                <div class="error-state">
+                    <h3>${title}</h3>
+                    <p>${message}</p>
+                    <div class="error-actions">
+                        ${actionButtons}
+                    </div>
+                    ${detailsSection}
+                </div>
+            `;
         }
 
-        // Chart initialization functions
-        function initializeAttritionCharts() {
-            if (!dashboardData.attrition) return;
-            
+        function initializeAttritionCharts(data) {
             // Risk by Department Chart
             if (charts.riskByDept) charts.riskByDept.destroy();
             
             const ctx1 = document.getElementById('riskByDeptChart').getContext('2d');
-            const deptData = dashboardData.attrition.department_risk || {};
+            const deptData = data.department_risk || {};
             
             const departments = Object.keys(deptData);
             const highData = departments.map(dept => deptData[dept]?.high || 0);
@@ -979,7 +830,7 @@
             if (charts.attritionTimeline) charts.attritionTimeline.destroy();
             
             const ctx2 = document.getElementById('attritionTimelineChart').getContext('2d');
-            const timelineData = dashboardData.attrition.timeline_data || [];
+            const timelineData = data.timeline_data || [];
             
             charts.attritionTimeline = new Chart(ctx2, {
                 type: 'line',
@@ -1003,108 +854,6 @@
             });
         }
 
-        function initializeHiringCharts() {
-            if (!dashboardData.hiring) return;
-            
-            const ctx = document.getElementById('hiringByDeptChart').getContext('2d');
-            const hiringData = dashboardData.hiring.department_hiring || {};
-            
-            const departments = Object.keys(hiringData);
-            const replacementData = departments.map(dept => hiringData[dept]?.replacement || 0);
-            const growthData = departments.map(dept => hiringData[dept]?.growth || 0);
-            
-            if (charts.hiringByDept) charts.hiringByDept.destroy();
-            
-            charts.hiringByDept = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: departments,
-                    datasets: [
-                        { label: 'Replacement Hires', data: replacementData, backgroundColor: '#e74c3c' },
-                        { label: 'Growth Hires', data: growthData, backgroundColor: '#27ae60' }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: { y: { beginAtZero: true } },
-                    plugins: { legend: { position: 'top' } }
-                }
-            });
-        }
-
-        function initializeOptimizationCharts() {
-            if (!dashboardData.optimization) return;
-            
-            const ctx = document.getElementById('leadTimeChart').getContext('2d');
-            const leadTimeData = dashboardData.optimization.dept_lead_times || {};
-            
-            if (charts.leadTime) charts.leadTime.destroy();
-            
-            charts.leadTime = new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    labels: Object.keys(leadTimeData),
-                    datasets: [{
-                        data: Object.values(leadTimeData),
-                        backgroundColor: ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#4facfe', '#00f2fe']
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { position: 'right' } }
-                }
-            });
-        }
-
-        function initializeGrowthCharts() {
-            if (!dashboardData.growth) return;
-            
-            // Financial Health Chart
-            const ctx1 = document.getElementById('financialHealthChart').getContext('2d');
-            const healthData = dashboardData.growth.financial_indicators || {};
-            
-            if (charts.financialHealth) charts.financialHealth.destroy();
-            
-            charts.financialHealth = new Chart(ctx1, {
-                type: 'radar',
-                data: {
-                    labels: ['Cash Flow', 'Debt Health', 'Profitability', 'Working Capital'],
-                    datasets: [{
-                        label: 'Financial Health',
-                        data: Object.values(healthData),
-                        backgroundColor: 'rgba(102, 126, 234, 0.2)',
-                        borderColor: '#667eea',
-                        pointBackgroundColor: '#667eea'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: { r: { min: 0, max: 1, ticks: { stepSize: 0.2 } } }
-                }
-            });
-
-            // Budget Utilization Chart
-            const ctx2 = document.getElementById('budgetUtilizationChart').getContext('2d');
-            
-            if (charts.budgetUtilization) charts.budgetUtilization.destroy();
-            
-            charts.budgetUtilization = new Chart(ctx2, {
-                type: 'doughnut',
-                data: {
-                    labels: ['Used Budget', 'Available Budget'],
-                    datasets: [{ data: [71, 29], backgroundColor: ['#667eea', '#e0e6ed'] }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { position: 'bottom' } }
-                }
-            });
-        }
-
         // Tab switching
         function showTab(tabName) {
             document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
@@ -1112,13 +861,6 @@
             
             document.getElementById(tabName).classList.add('active');
             event.target.classList.add('active');
-            
-            setTimeout(() => {
-                if (tabName === 'attrition') initializeAttritionCharts();
-                else if (tabName === 'hiring') initializeHiringCharts();
-                else if (tabName === 'optimization') initializeOptimizationCharts();
-                else if (tabName === 'growth') initializeGrowthCharts();
-            }, 100);
         }
 
         // API Action Functions
@@ -1132,17 +874,155 @@
                 showAlert('info', 'Running full analysis pipeline. This may take a few minutes...');
                 
                 const response = await fetch(`${API_BASE_URL}/run-full-analysis`, { method: 'POST' });
+                
+                if (!response.ok) {
+                    throw new Error(`Analysis failed: ${response.status}`);
+                }
+                
                 const result = await response.json();
                 
                 if (result.status === 'success') {
                     showAlert('success', 'Full analysis completed successfully!');
                     await loadDashboardData(); // Refresh data
+                    await checkSystemStatus(); // Update system health
                 } else {
                     throw new Error(result.message || 'Analysis failed');
                 }
             } catch (error) {
-                console.error('❌ Full analysis failed:', error);
+                console.error('Full analysis failed:', error);
                 showAlert('error', `Analysis failed: ${error.message}`);
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        async function runAttritionModel() {
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.innerHTML = '<div class="spinner"></div> Running...';
+            btn.disabled = true;
+            
+            try {
+                showAlert('info', 'Running attrition model...');
+                
+                const response = await fetch(`${API_BASE_URL}/run-attrition-model`, { method: 'POST' });
+                
+                if (!response.ok) {
+                    throw new Error(`Attrition model failed: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    showAlert('success', 'Attrition model completed successfully!');
+                    await loadDashboardData();
+                    await checkSystemStatus();
+                } else {
+                    throw new Error(result.message || 'Attrition model failed');
+                }
+            } catch (error) {
+                console.error('Attrition model failed:', error);
+                showAlert('error', `Attrition model failed: ${error.message}`);
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        async function runHiringCalculation() {
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.innerHTML = '<div class="spinner"></div> Running...';
+            btn.disabled = true;
+            
+            try {
+                showAlert('info', 'Running hiring calculation...');
+                
+                const response = await fetch(`${API_BASE_URL}/run-hiring-calculation`, { method: 'POST' });
+                
+                if (!response.ok) {
+                    throw new Error(`Hiring calculation failed: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    showAlert('success', 'Hiring calculation completed successfully!');
+                    await loadDashboardData();
+                    await checkSystemStatus();
+                } else {
+                    throw new Error(result.message || 'Hiring calculation failed');
+                }
+            } catch (error) {
+                console.error('Hiring calculation failed:', error);
+                showAlert('error', `Hiring calculation failed: ${error.message}`);
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        async function runOptimization() {
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.innerHTML = '<div class="spinner"></div> Running...';
+            btn.disabled = true;
+            
+            try {
+                showAlert('info', 'Running timeline optimization...');
+                
+                const response = await fetch(`${API_BASE_URL}/run-optimization`, { method: 'POST' });
+                
+                if (!response.ok) {
+                    throw new Error(`Optimization failed: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    showAlert('success', 'Timeline optimization completed successfully!');
+                    await loadDashboardData();
+                    await checkSystemStatus();
+                } else {
+                    throw new Error(result.message || 'Optimization failed');
+                }
+            } catch (error) {
+                console.error('Optimization failed:', error);
+                showAlert('error', `Optimization failed: ${error.message}`);
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        async function runGrowthAnalysis() {
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.innerHTML = '<div class="spinner"></div> Running...';
+            btn.disabled = true;
+            
+            try {
+                showAlert('info', 'Running growth analysis...');
+                
+                const response = await fetch(`${API_BASE_URL}/run-growth-analysis`, { method: 'POST' });
+                
+                if (!response.ok) {
+                    throw new Error(`Growth analysis failed: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    showAlert('success', 'Growth analysis completed successfully!');
+                    await loadDashboardData();
+                    await checkSystemStatus();
+                } else {
+                    throw new Error(result.message || 'Growth analysis failed');
+                }
+            } catch (error) {
+                console.error('Growth analysis failed:', error);
+                showAlert('error', `Growth analysis failed: ${error.message}`);
             } finally {
                 btn.textContent = originalText;
                 btn.disabled = false;
@@ -1157,35 +1037,11 @@
             
             try {
                 await loadDashboardData();
+                await checkSystemStatus();
                 showAlert('success', 'Data refreshed successfully!');
             } catch (error) {
-                console.error('❌ Refresh failed:', error);
+                console.error('Refresh failed:', error);
                 showAlert('error', 'Failed to refresh data');
-            } finally {
-                btn.textContent = originalText;
-                btn.disabled = false;
-            }
-        }
-
-        async function runOptimization() {
-            const btn = event.target;
-            const originalText = btn.textContent;
-            btn.innerHTML = '<div class="spinner"></div> Optimizing...';
-            btn.disabled = true;
-            
-            try {
-                const response = await fetch(`${API_BASE_URL}/run-optimization`, { method: 'POST' });
-                const result = await response.json();
-                
-                if (result.status === 'success') {
-                    showAlert('success', 'Timeline optimization completed!');
-                    await loadDashboardData(); // Refresh data
-                } else {
-                    throw new Error(result.message || 'Optimization failed');
-                }
-            } catch (error) {
-                console.error('❌ Optimization failed:', error);
-                showAlert('error', `Optimization failed: ${error.message}`);
             } finally {
                 btn.textContent = originalText;
                 btn.disabled = false;
@@ -1215,38 +1071,57 @@
                     throw new Error(`Export failed: ${response.status}`);
                 }
             } catch (error) {
-                console.error(`❌ Export failed:`, error);
-                showAlert('error', `Failed to export ${reportType} report`);
+                console.error(`Export failed:`, error);
+                showAlert('error', `Failed to export ${reportType} report: ${error.message}`);
             }
         }
 
         async function exportAllReports() {
-            showAlert('info', 'Exporting all reports...');
+            showAlert('info', 'Exporting all available reports...');
             
             const reports = ['attrition', 'hiring', 'optimization', 'growth'];
             let successCount = 0;
             
             for (const report of reports) {
                 try {
-                    await exportData(report);
-                    successCount++;
+                    const response = await fetch(`${API_BASE_URL}/export/${report}`);
+                    if (response.ok) {
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `${report}_report.xlsx`;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                        successCount++;
+                    }
                 } catch (error) {
                     console.error(`Failed to export ${report}:`, error);
                 }
             }
             
-            if (successCount === reports.length) {
-                showAlert('success', 'All reports exported successfully!');
+            if (successCount > 0) {
+                showAlert('success', `${successCount} report(s) exported successfully!`);
             } else {
-                showAlert('warning', `${successCount}/${reports.length} reports exported successfully`);
+                showAlert('warning', 'No reports available for export. Please run analysis modules first.');
             }
         }
 
-        // Utility functions
-        function showLoading(show) {
-            // Implementation for showing/hiding loading states
+        function showFileHelp(moduleType) {
+            const filePatterns = {
+                'attrition': 'Employee_Attrition_Predictions_FIXED_*.xlsx',
+                'hiring': 'FIXED_integrated_hiring_plan_*.xlsx',
+                'optimization': 'SIMPLIFIED_hiring_timeline_*.xlsx',
+                'growth': 'Enhanced_Financial_Hiring_Plan_FIXED_*.xlsx'
+            };
+            
+            const pattern = filePatterns[moduleType];
+            showAlert('info', `Expected file pattern: ${pattern}. Make sure the file is in the same directory as the API server.`);
         }
 
+        // Utility functions
         function showAlert(type, message) {
             // Create and show alert
             const alertDiv = document.createElement('div');
@@ -1270,12 +1145,6 @@
 
         function showError(message) {
             showAlert('error', message);
-        }
-
-        function loadSampleData() {
-            // Fallback sample data loading
-            console.log('📊 Loading sample data as fallback...');
-            // Implementation would load the same sample data structure
         }
     </script>
 </body>

@@ -37,5 +37,7 @@
     "Training_Completion_Rate"
   ],
   "total_features": 29,
-  "approach": "STREAMLINED_WITH_RISK_FACTORS"
+  "approach": "REAL_DATA_WITH_RISK_FACTORS",
+  "timeline_data_points": 14,
+  "department_count": 6
 }

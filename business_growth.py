@@ -75,7 +75,7 @@ print(f"  Debt Health: {health_details['debt_health']:.1f}/1.0")
 print(f"  Profitability: {health_details['profitability']:.1f}/1.0")
 print(f"  Working Capital: {'✅' if health_details['working_capital_trend'] else '❌'}")
 
-# Step 3: Department Performance Analysis (NEW)
+# Step 3: Department Performance Analysis
 print("\nStep 3: Department Performance Analysis...")
 
 def analyze_department_performance():
@@ -133,10 +133,10 @@ def calculate_enhanced_growth_rate():
     # Factor 3: Investment trend (25% weight)
     rd_growth = (recent_financial['RD_Investment'].iloc[-1] - recent_financial['RD_Investment'].iloc[0]) / recent_financial['RD_Investment'].iloc[0]
     
-    # Factor 4: Market position (10% weight) - NEW
+    # Factor 4: Market position (10% weight)
     market_share_trend = (recent_business['Market_Share'].iloc[-1] - recent_business['Market_Share'].iloc[0])
     
-    # Factor 5: Efficiency (5% weight) - NEW
+    # Factor 5: Efficiency (5% weight)
     profit_margin_trend = (recent_business['Profit_Margin'].iloc[-1] - recent_business['Profit_Margin'].iloc[0])
     
     # Weighted growth score
@@ -160,59 +160,113 @@ print(f"Simple Revenue Growth: {simple_growth:.1%}")
 print(f"Enhanced Multi-Factor Growth: {enhanced_growth:.1%}")
 print(f"Risk-Adjusted Growth: {final_growth:.1%}")
 
-# Step 5: Smart Department Priorities (ENHANCED)
+# Step 5: Smart Department Priorities (FIXED)
 print("\nStep 5: Smart Department Priorities...")
 
 def calculate_smart_department_multipliers():
-    """Enhanced department multipliers with performance consideration"""
+    """Enhanced department multipliers with performance consideration - FIXED VERSION"""
     recent_financial = financial_df.tail(6)
     recent_business = business_df.tail(6)
     
-    # Base multipliers
     multipliers = {}
     
+    print("  🔍 Department Multiplier Calculation Details:")
+    
     for dept in dept_performance.keys():
+        print(f"\n  📊 {dept} Department:")
+        
+        # Base multiplier
         base_multiplier = 1.0
         perf = dept_performance[dept]
         
         # Performance-based adjustment
-        if perf['performance_score'] < 0.6:
+        performance_score = perf['performance_score']
+        if performance_score < 0.6:
             performance_adj = 1.3  # Poor performance needs more people
-        elif perf['performance_score'] > 0.8:
+            perf_reason = f"Poor performance ({performance_score:.2f})"
+        elif performance_score > 0.8:
             performance_adj = 0.9  # Excellent performance needs fewer people
+            perf_reason = f"Excellent performance ({performance_score:.2f})"
         else:
             performance_adj = 1.0
+            perf_reason = f"Normal performance ({performance_score:.2f})"
         
-        # Financial indicator adjustments
+        print(f"    Performance Adjustment: {performance_adj}x - {perf_reason}")
+        
+        # Department-specific financial indicator adjustments
+        financial_adj = 1.0
+        financial_reason = "No special financial factors"
+        
         if dept == "Engineering":
             rd_trend = (recent_financial['RD_Investment'].iloc[-1] - recent_financial['RD_Investment'].iloc[0]) / recent_financial['RD_Investment'].iloc[0]
-            financial_adj = 1.4 if rd_trend > 0.15 else 1.2 if rd_trend > 0.05 else 1.0
-            
+            if rd_trend > 0.15:
+                financial_adj = 1.4
+                financial_reason = f"High R&D growth ({rd_trend:.1%})"
+            elif rd_trend > 0.05:
+                financial_adj = 1.2
+                financial_reason = f"Moderate R&D growth ({rd_trend:.1%})"
+            else:
+                financial_adj = 1.0
+                financial_reason = f"Low R&D growth ({rd_trend:.1%})"
+                
         elif dept == "Sales":
             revenue_trend = simple_growth
             market_trend = recent_business['Market_Share'].iloc[-1] - recent_business['Market_Share'].iloc[0]
-            financial_adj = 1.5 if revenue_trend < 0.03 or market_trend < 0 else 1.0
-            
+            if revenue_trend < 0.03 or market_trend < 0:
+                financial_adj = 1.5
+                financial_reason = f"Revenue concerns (Rev: {revenue_trend:.1%}, Market: {market_trend:.2f})"
+            else:
+                financial_adj = 1.0
+                financial_reason = f"Revenue healthy (Rev: {revenue_trend:.1%}, Market: {market_trend:.2f})"
+                
         elif dept == "Marketing":
-            customer_acq = recent_business['Customer_Acquisition'].iloc[-1] - recent_business['Customer_Acquisition'].iloc[0]
-            financial_adj = 0.7 if risk_level == "High" else 1.2 if customer_acq < 0 else 1.0
-            
+            if 'Customer_Acquisition' in recent_business.columns:
+                customer_acq = recent_business['Customer_Acquisition'].iloc[-1] - recent_business['Customer_Acquisition'].iloc[0]
+                if risk_level == "High":
+                    financial_adj = 0.7
+                    financial_reason = "High financial risk - reduce marketing"
+                elif customer_acq < 0:
+                    financial_adj = 1.2
+                    financial_reason = f"Declining customer acquisition ({customer_acq})"
+                else:
+                    financial_adj = 1.0
+                    financial_reason = f"Stable customer acquisition ({customer_acq})"
+            else:
+                financial_adj = 0.7 if risk_level == "High" else 1.0
+                financial_reason = f"Risk-based adjustment (Risk: {risk_level})"
+                
         elif dept == "Operations":
             profit_trend = recent_business['Profit_Margin'].iloc[-1] - recent_business['Profit_Margin'].iloc[-6]
-            financial_adj = 1.3 if profit_trend < -0.02 else 1.0
-            
+            if profit_trend < -0.02:
+                financial_adj = 1.3
+                financial_reason = f"Declining profit margins ({profit_trend:.2f})"
+            else:
+                financial_adj = 1.0
+                financial_reason = f"Stable profit margins ({profit_trend:.2f})"
+                
         else:  # HR, Finance, etc.
-            financial_adj = 0.8 if risk_level == "High" else 1.0
+            if risk_level == "High":
+                financial_adj = 0.8
+                financial_reason = "High financial risk - reduce support hiring"
+            else:
+                financial_adj = 1.0
+                financial_reason = "Normal support function scaling"
+        
+        print(f"    Financial Adjustment: {financial_adj}x - {financial_reason}")
         
         # Combined multiplier
         final_multiplier = base_multiplier * performance_adj * financial_adj
-        multipliers[dept] = min(final_multiplier, 2.0)  # Cap at 2x
+        final_multiplier = min(final_multiplier, 2.0)  # Cap at 2x
+        
+        multipliers[dept] = final_multiplier
+        
+        print(f"    Final Multiplier: {base_multiplier} × {performance_adj} × {financial_adj} = {final_multiplier:.2f}x")
     
     return multipliers
 
 dept_multipliers = calculate_smart_department_multipliers()
 
-print("Smart Department Growth Multipliers:")
+print("\n📈 Smart Department Growth Multipliers Summary:")
 for dept, mult in dept_multipliers.items():
     perf_score = dept_performance[dept]['performance_score']
     status = "🚀 CRITICAL" if mult > 1.4 else "📈 HIGH" if mult > 1.1 else "📉 LOW" if mult < 0.9 else "➡️ NORMAL"
@@ -231,7 +285,7 @@ def calculate_comprehensive_budget():
     # Conservative budget calculation
     if avg_cash_flow > 0 and avg_working_capital > 0:
         # Base budget from cash flow
-        base_budget = avg_cash_flow * 0.12  # Reduced from 15% to 12% for safety
+        base_budget = avg_cash_flow * 0.12  # 12% for safety
         
         # Working capital adjustment
         wc_adjustment = min(avg_working_capital * 0.02, base_budget * 0.5)
@@ -247,7 +301,7 @@ def calculate_comprehensive_budget():
 hiring_budget, budget_status = calculate_comprehensive_budget()
 print(f"Enhanced Hiring Budget: ${hiring_budget:,.0f}/month ({budget_status})")
 
-# Step 7: Generate Comprehensive Hiring Recommendations
+# Step 7: Generate Comprehensive Hiring Recommendations (FIXED)
 print("\nStep 7: Comprehensive Hiring Recommendations...")
 
 def get_hiring_justification(dept, multiplier, performance):
@@ -263,15 +317,35 @@ def get_hiring_justification(dept, multiplier, performance):
 
 # Get current department sizes
 dept_sizes = employee_df[employee_df['Status'] == 'Active']['Department'].value_counts()
+print(f"\n📊 Current Department Sizes:")
+for dept, size in dept_sizes.items():
+    print(f"  {dept}: {size} employees")
 
-# Calculate comprehensive hiring needs
+# Calculate comprehensive hiring needs - FIXED VERSION
 enhanced_hiring = []
 total_budget_needed = 0
 
+print(f"\n🧮 Detailed Hiring Calculations:")
+print(f"Base Growth Rate: {final_growth:.1%}")
+
 for dept, current_size in dept_sizes.items():
-    if dept in dept_multipliers:
-        enhanced_growth_rate = final_growth * dept_multipliers[dept]
+    print(f"\n📋 {dept} Department:")
+    print(f"  Current Size: {current_size}")
+    
+    # Check if department exists in our analysis
+    if dept in dept_multipliers and dept in dept_performance:
+        # Calculate department-specific growth rate
+        dept_multiplier = dept_multipliers[dept]
+        enhanced_growth_rate = final_growth * dept_multiplier
+        
+        print(f"  Base Growth: {final_growth:.1%}")
+        print(f"  Department Multiplier: {dept_multiplier:.2f}x")
+        print(f"  Department Growth Rate: {enhanced_growth_rate:.1%}")
+        
+        # Calculate hires needed
         growth_hires = max(0, int(current_size * enhanced_growth_rate))
+        
+        print(f"  Calculation: {current_size} × {enhanced_growth_rate:.3f} = {growth_hires}")
         
         # Enhanced cost estimation
         avg_salary = {"Engineering": 85000, "Sales": 65000, "Marketing": 58000, 
@@ -279,6 +353,8 @@ for dept, current_size in dept_sizes.items():
         
         monthly_cost = growth_hires * avg_salary.get(dept, 55000) / 12
         total_budget_needed += monthly_cost
+        
+        print(f"  Monthly Cost: ${monthly_cost:,.0f}")
         
         if growth_hires > 0:
             enhanced_hiring.append({
@@ -292,58 +368,66 @@ for dept, current_size in dept_sizes.items():
                 'Monthly_Cost': f"${monthly_cost:,.0f}",
                 'Justification': get_hiring_justification(dept, dept_multipliers[dept], dept_performance[dept])
             })
+        else:
+            print(f"  No hiring needed (growth rate too low)")
+    else:
+        print(f"  ⚠️ Department not found in analysis - skipping")
 
 # Budget feasibility with recommendations
 budget_feasible = "✅ FEASIBLE" if total_budget_needed <= hiring_budget else "⚠️ OVER BUDGET"
 budget_utilization = (total_budget_needed / hiring_budget * 100) if hiring_budget > 0 else 0
 
+print(f"\n💰 Budget Analysis:")
 print(f"Total Monthly Cost: ${total_budget_needed:,.0f} ({budget_feasible})")
 print(f"Budget Utilization: {budget_utilization:.1f}%")
 
 # Step 8: Export Enhanced Results
 print("\nStep 8: Exporting Enhanced Results...")
 
-results_df = pd.DataFrame(enhanced_hiring)
-timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-filename = f'Enhanced_Financial_Hiring_Plan_{timestamp}.xlsx'
+if len(enhanced_hiring) > 0:
+    results_df = pd.DataFrame(enhanced_hiring)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f'Enhanced_Financial_Hiring_Plan_FIXED_{timestamp}.xlsx'
 
-# Enhanced summary
-summary_data = {
-    'Metric': [
-        'Simple Revenue Growth', 'Enhanced Multi-Factor Growth', 'Risk-Adjusted Growth',
-        'Financial Health Score', 'Risk Level', 'Hiring Budget Available',
-        'Total Hiring Cost', 'Budget Utilization', 'Budget Status'
-    ],
-    'Value': [
-        f"{simple_growth:.1%}", f"{enhanced_growth:.1%}", f"{final_growth:.1%}",
-        f"{health_score:.0f}/100", risk_level, f"${hiring_budget:,.0f}",
-        f"${total_budget_needed:,.0f}", f"{budget_utilization:.1f}%", budget_feasible.split()[1]
-    ]
-}
+    # Enhanced summary
+    summary_data = {
+        'Metric': [
+            'Simple Revenue Growth', 'Enhanced Multi-Factor Growth', 'Risk-Adjusted Growth',
+            'Financial Health Score', 'Risk Level', 'Hiring Budget Available',
+            'Total Hiring Cost', 'Budget Utilization', 'Budget Status'
+        ],
+        'Value': [
+            f"{simple_growth:.1%}", f"{enhanced_growth:.1%}", f"{final_growth:.1%}",
+            f"{health_score:.0f}/100", risk_level, f"${hiring_budget:,.0f}",
+            f"${total_budget_needed:,.0f}", f"{budget_utilization:.1f}%", budget_feasible.split()[1]
+        ]
+    }
 
-with pd.ExcelWriter(filename, engine='openpyxl') as writer:
-    # Enhanced hiring plan
-    if len(results_df) > 0:
+    with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+        # Enhanced hiring plan
         results_df.to_excel(writer, sheet_name='Enhanced_Hiring_Plan', index=False)
-    
-    # Financial summary
-    pd.DataFrame(summary_data).to_excel(writer, sheet_name='Financial_Summary', index=False)
-    
-    # Department analysis
-    dept_analysis = pd.DataFrame([
-        {
-            'Department': dept,
-            'Performance_Score': perf['performance_score'],
-            'Avg_Performance_Rating': perf['avg_performance'],
-            'Job_Satisfaction': perf['avg_satisfaction'],
-            'Promotion_Rate': perf['promotion_rate'],
-            'Priority_Multiplier': dept_multipliers.get(dept, 1.0)
-        }
-        for dept, perf in dept_performance.items()
-    ])
-    dept_analysis.to_excel(writer, sheet_name='Department_Analysis', index=False)
+        
+        # Financial summary
+        pd.DataFrame(summary_data).to_excel(writer, sheet_name='Financial_Summary', index=False)
+        
+        # Department analysis
+        dept_analysis = pd.DataFrame([
+            {
+                'Department': dept,
+                'Performance_Score': perf['performance_score'],
+                'Avg_Performance_Rating': perf['avg_performance'],
+                'Job_Satisfaction': perf['avg_satisfaction'],
+                'Promotion_Rate': perf['promotion_rate'],
+                'Priority_Multiplier': dept_multipliers.get(dept, 1.0)
+            }
+            for dept, perf in dept_performance.items()
+        ])
+        dept_analysis.to_excel(writer, sheet_name='Department_Analysis', index=False)
 
-print(f"✅ Enhanced results saved to: {filename}")
+    print(f"✅ Enhanced results saved to: {filename}")
+else:
+    print("ℹ️ No hiring recommendations generated")
+    filename = "No export - no recommendations"
 
 # Final Enhanced Summary
 print(f"\n" + "="*60)
@@ -352,16 +436,20 @@ print("="*60)
 print(f"🎯 Enhanced Growth Rate: {final_growth:.1%} (vs {simple_growth:.1%} simple)")
 print(f"💰 Financial Health: {health_score:.0f}/100 ({risk_level} Risk)")
 print(f"💵 Budget Status: {budget_status} ({budget_utilization:.1f}% utilization)")
-print(f"📊 Total Enhanced Hires: {sum([h['Enhanced_Growth_Hires'] for h in enhanced_hiring])}")
 
-# Priority departments with reasoning
-high_priority = [(d, m) for d, m in dept_multipliers.items() if m > 1.1]
-print(f"🏢 High Priority Departments: {[f'{d} ({m:.2f}x)' for d, m in high_priority]}")
+if len(enhanced_hiring) > 0:
+    total_enhanced_hires = sum([h['Enhanced_Growth_Hires'] for h in enhanced_hiring])
+    print(f"📊 Total Enhanced Hires: {total_enhanced_hires}")
 
-print(f"🔍 Key Insights:")
-for dept, mult in sorted(dept_multipliers.items(), key=lambda x: x[1], reverse=True)[:3]:
-    perf = dept_performance[dept]['performance_score']
-    print(f"   {dept}: {mult:.2f}x multiplier (Performance: {perf:.2f})")
+    # Priority departments with reasoning
+    high_priority = [(d, m) for d, m in dept_multipliers.items() if m > 1.1]
+    if high_priority:
+        print(f"🏢 High Priority Departments: {[f'{d} ({m:.2f}x)' for d, m in high_priority]}")
+
+    print(f"🔍 Key Insights:")
+    for dept, mult in sorted(dept_multipliers.items(), key=lambda x: x[1], reverse=True)[:3]:
+        perf = dept_performance[dept]['performance_score']
+        print(f"   {dept}: {mult:.2f}x multiplier (Performance: {perf:.2f})")
 
 print(f"📁 Detailed Results: {filename}")
 print("✅ Enhanced Sub-Module 4 Complete - Advanced Financial Intelligence!")
