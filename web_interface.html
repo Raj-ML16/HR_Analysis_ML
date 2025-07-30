@@ -157,11 +157,6 @@
             background: rgba(255, 255, 255, 0.15);
         }
 
-        .nav-tab:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
         .btn {
             padding: 10px 20px;
             border: none;
@@ -403,13 +398,39 @@
             color: #721c24;
         }
 
-        .risk-factors {
-            font-size: 0.85rem;
-            color: #5a6c7d;
-            font-style: italic;
-            max-width: 200px;
-            line-height: 1.3;
+        .timeline-item {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            border-left: 3px solid #667eea;
+            margin-bottom: 15px;
+            background: #f8f9fa;
+            border-radius: 0 8px 8px 0;
         }
+
+        .timeline-date {
+            font-weight: bold;
+            color: #667eea;
+            min-width: 100px;
+        }
+
+        .timeline-content {
+            flex: 1;
+            margin-left: 15px;
+        }
+
+        .priority-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        .priority-critical { background: #e74c3c; }
+        .priority-high { background: #f39c12; }
+        .priority-normal { background: #27ae60; }
+        .priority-low { background: #95a5a6; }
 
         @media (max-width: 768px) {
             .container { padding: 10px; }
@@ -494,7 +515,6 @@
             </div>
         </div>
     </div>
-
     <script>
         // API Configuration
         const API_BASE_URL = 'http://localhost:8000/api';
@@ -502,6 +522,32 @@
         // Global variables
         let charts = {};
         let dashboardData = {};
+
+        // FIXED: Tab switching function in global scope
+        function showTab(tabName) {
+            console.log(`🔄 Switching to tab: ${tabName}`);
+            
+            // Remove active class from all tabs and content
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
+            
+            // Add active class to selected tab and content
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+            
+            // Initialize charts after a short delay
+            setTimeout(() => {
+                if (tabName === 'attrition' && dashboardData.attrition) {
+                    initializeAttritionCharts(dashboardData.attrition);
+                } else if (tabName === 'hiring' && dashboardData.hiring) {
+                    initializeHiringCharts(dashboardData.hiring);
+                } else if (tabName === 'optimization' && dashboardData.optimization) {
+                    initializeOptimizationCharts(dashboardData.optimization);
+                } else if (tabName === 'growth' && dashboardData.growth) {
+                    initializeGrowthCharts(dashboardData.growth);
+                }
+            }, 100);
+        }
 
         // Initialize dashboard
         document.addEventListener('DOMContentLoaded', function() {
@@ -576,12 +622,10 @@
                 
                 let statusClass = 'status-error';
                 let statusText = 'No data files found';
-                let tabDisabled = true;
                 
                 if (module.files > 0) {
                     statusClass = 'status-success';
                     statusText = `${module.files} data file(s) available`;
-                    tabDisabled = false;
                 }
                 
                 moduleDiv.innerHTML = `
@@ -594,11 +638,7 @@
                 
                 container.appendChild(moduleDiv);
                 
-                // Enable/disable tabs based on data availability
-                const tab = document.getElementById(`${module.key}Tab`);
-                if (tab) {
-                    tab.disabled = tabDisabled;
-                }
+                // REMOVED: No longer disable tabs - all tabs stay clickable
             });
         }
 
@@ -731,8 +771,85 @@
                 return;
             }
             
-            container.innerHTML = '<div class="loading">Hiring data processing...</div>';
-            // Add hiring data display logic here
+            // Create successful hiring display
+            container.innerHTML = `
+                <div class="alert alert-info">
+                    <strong>📋 Hiring Intelligence:</strong> Based on ML predictions and business growth analysis
+                </div>
+
+                <div class="dashboard-grid grid-3">
+                    <div class="card metric-card">
+                        <div class="metric-value" style="color: #e74c3c;">${data.metrics.total_replacement_hires}</div>
+                        <div class="metric-label">Replacement Hires Needed</div>
+                    </div>
+                    <div class="card metric-card">
+                        <div class="metric-value" style="color: #27ae60;">${data.metrics.total_growth_hires}</div>
+                        <div class="metric-label">Growth Hires Planned</div>
+                    </div>
+                    <div class="card metric-card">
+                        <div class="metric-value" style="color: #f39c12;">${data.metrics.immediate_actions}</div>
+                        <div class="metric-label">Immediate Actions</div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid grid-2">
+                    <div class="card">
+                        <h3>🚨 Immediate Hiring Actions</h3>
+                        <button class="export-btn" onclick="exportData('hiring')">📤 Export</button>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Employee</th>
+                                        <th>Department</th>
+                                        <th>Priority</th>
+                                        <th>Action Status</th>
+                                        <th>Departure Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${data.immediate_actions.map(action => `
+                                        <tr>
+                                            <td>${action.name}</td>
+                                            <td>${action.department}</td>
+                                            <td><span class="status-badge badge-${action.priority.toLowerCase()}">${action.priority}</span></td>
+                                            <td>${action.status}</td>
+                                            <td>${action.departure}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>📈 Hiring by Department</h3>
+                        <div class="chart-container">
+                            <canvas id="hiringByDeptChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>📅 Hiring Timeline</h3>
+                    <div id="hiringTimelineContainer">
+                        ${data.timeline_items.map(item => `
+                            <div class="timeline-item">
+                                <div class="timeline-date">${item.date}</div>
+                                <div class="timeline-content">
+                                    <div class="priority-indicator priority-${item.priority}"></div>
+                                    ${item.content}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+            
+            // Initialize hiring chart
+            setTimeout(() => initializeHiringCharts(data), 100);
+            
+            showAlert('success', `✅ Hiring data loaded from: ${data.source_file}`);
         }
 
         function updateOptimizationTab(data) {
@@ -751,7 +868,109 @@
                 return;
             }
             
-            container.innerHTML = '<div class="loading">Optimization data processing...</div>';
+            // Create successful optimization display
+            container.innerHTML = `
+                <div class="alert alert-warning">
+                    <strong>⚡ Optimization Goal:</strong> Zero resource gaps by optimizing hiring start dates considering lead times
+                </div>
+
+                <div class="dashboard-grid grid-4">
+                    <div class="card metric-card">
+                        <div class="metric-value" style="color: #27ae60;">${data.metrics.total_optimized}</div>
+                        <div class="metric-label">Positions Optimized</div>
+                    </div>
+                    <div class="card metric-card">
+                        <div class="metric-value" style="color: #667eea;">${data.metrics.avg_lead_time}</div>
+                        <div class="metric-label">Avg Lead Time (days)</div>
+                    </div>
+                    <div class="card metric-card">
+                        <div class="metric-value" style="color: #e74c3c;">${data.metrics.urgent_optimizations}</div>
+                        <div class="metric-label">Urgent Start Required</div>
+                    </div>
+                    <div class="card metric-card">
+                        <div class="metric-value" style="color: #27ae60;">${data.metrics.gap_days_eliminated}</div>
+                        <div class="metric-label">Gap Days Eliminated</div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid grid-2">
+                    <div class="card">
+                        <h3>⚡ Urgent Optimizations</h3>
+                        <button class="export-btn" onclick="exportData('optimization')">📤 Export</button>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Employee</th>
+                                        <th>Department</th>
+                                        <th>Departure Date</th>
+                                        <th>Optimal Start</th>
+                                        <th>Days Until Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${data.urgent_optimizations.map(opt => `
+                                        <tr>
+                                            <td>${opt.name}</td>
+                                            <td>${opt.department}</td>
+                                            <td>${opt.departure}</td>
+                                            <td>${opt.optimal_start}</td>
+                                            <td class="${opt.days_until <= 0 ? 'risk-high' : 'risk-medium'}">${opt.days_until} days</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>📊 Lead Times by Department</h3>
+                        <div class="chart-container">
+                            <canvas id="leadTimeChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>🔧 Optimization Results</h3>
+                    <button class="btn btn-primary" onclick="runOptimization()">🔄 Re-run Optimization</button>
+                    <div class="table-container" style="margin-top: 20px;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Employee</th>
+                                    <th>Department</th>
+                                    <th>Departure Date</th>
+                                    <th>Optimal Start</th>
+                                    <th>New Employee Ready</th>
+                                    <th>Resource Gap</th>
+                                    <th>Lead Time</th>
+                                    <th>Action Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.optimization_results.map(result => `
+                                    <tr>
+                                        <td>${result.name}</td>
+                                        <td>${result.department}</td>
+                                        <td>${result.departure}</td>
+                                        <td>${result.optimal_start}</td>
+                                        <td>${result.new_ready}</td>
+                                        <td class="risk-low">${result.gap} days</td>
+                                        <td>${result.lead_time} days</td>
+                                        <td class="${result.status.includes('overdue') ? 'risk-high' : result.status.includes('NOW') ? 'risk-medium' : 'risk-low'}">${result.status}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            
+            // Initialize optimization charts
+            setTimeout(() => initializeOptimizationCharts(data), 100);
+            
+            showAlert('success', `✅ Optimization data loaded from: ${data.source_file}`);
         }
 
         function updateGrowthTab(data) {
@@ -769,7 +988,86 @@
                 return;
             }
             
-            container.innerHTML = '<div class="loading">Growth data processing...</div>';
+            // Create successful growth display
+            container.innerHTML = `
+                <div class="dashboard-grid grid-3">
+                    <div class="card metric-card">
+                        <div class="metric-value" style="color: #27ae60;">${data.metrics.financial_health_score}</div>
+                        <div class="metric-label">Financial Health Score</div>
+                    </div>
+                    <div class="card metric-card">
+                        <div class="metric-value" style="color: #667eea;">${data.metrics.growth_rate}</div>
+                        <div class="metric-label">Enhanced Growth Rate</div>
+                    </div>
+                    <div class="card metric-card">
+                        <div class="metric-value" style="color: #27ae60;">${data.metrics.hiring_budget}</div>
+                        <div class="metric-label">Monthly Hiring Budget</div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid grid-2">
+                    <div class="card">
+                        <h3>🏢 Department Growth Priorities</h3>
+                        <button class="export-btn" onclick="exportData('growth')">📤 Export</button>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Department</th>
+                                        <th>Current Size</th>
+                                        <th>Priority Multiplier</th>
+                                        <th>Growth Hires</th>
+                                        <th>Monthly Cost</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${data.growth_priorities.map(dept => `
+                                        <tr>
+                                            <td>${dept.department}</td>
+                                            <td>${dept.current_size}</td>
+                                            <td class="${dept.multiplier > 1.2 ? 'risk-high' : dept.multiplier > 1.0 ? 'risk-medium' : 'risk-low'}">${dept.multiplier}x</td>
+                                            <td>${dept.growth_hires}</td>
+                                            <td>${dept.monthly_cost}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>📈 Financial Health Indicators</h3>
+                        <div class="chart-container">
+                            <canvas id="financialHealthChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid grid-2">
+                    <div class="card">
+                        <h3>💰 Budget Utilization</h3>
+                        <div class="chart-container">
+                            <canvas id="budgetUtilizationChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>🎯 Growth Strategy Recommendations</h3>
+                        <div id="growthRecommendations">
+                            ${data.recommendations.map(rec => `
+                                <div class="alert alert-${rec.type === 'critical' ? 'warning' : 'info'}">
+                                    <strong>${rec.type.toUpperCase()}:</strong> ${rec.text}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Initialize growth charts
+            setTimeout(() => initializeGrowthCharts(data), 100);
+            
+            showAlert('success', `✅ Growth data loaded from: ${data.source_file}`);
         }
 
         function createErrorState(title, message, actions, errorData) {
@@ -854,13 +1152,106 @@
             });
         }
 
-        // Tab switching
-        function showTab(tabName) {
-            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
-            document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
+        function initializeHiringCharts(data) {
+            if (!data.department_hiring) return;
             
-            document.getElementById(tabName).classList.add('active');
-            event.target.classList.add('active');
+            const ctx = document.getElementById('hiringByDeptChart').getContext('2d');
+            const hiringData = data.department_hiring || {};
+            
+            const departments = Object.keys(hiringData);
+            const replacementData = departments.map(dept => hiringData[dept]?.replacement || 0);
+            const growthData = departments.map(dept => hiringData[dept]?.growth || 0);
+            
+            if (charts.hiringByDept) charts.hiringByDept.destroy();
+            
+            charts.hiringByDept = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: departments,
+                    datasets: [
+                        { label: 'Replacement Hires', data: replacementData, backgroundColor: '#e74c3c' },
+                        { label: 'Growth Hires', data: growthData, backgroundColor: '#27ae60' }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: true } },
+                    plugins: { legend: { position: 'top' } }
+                }
+            });
+        }
+
+        function initializeOptimizationCharts(data) {
+            if (!data.dept_lead_times) return;
+            
+            const ctx = document.getElementById('leadTimeChart').getContext('2d');
+            const leadTimeData = data.dept_lead_times || {};
+            
+            if (charts.leadTime) charts.leadTime.destroy();
+            
+            charts.leadTime = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(leadTimeData),
+                    datasets: [{
+                        data: Object.values(leadTimeData),
+                        backgroundColor: ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#4facfe', '#00f2fe']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'right' } }
+                }
+            });
+        }
+
+        function initializeGrowthCharts(data) {
+            if (!data.financial_indicators) return;
+            
+            // Financial Health Chart
+            const ctx1 = document.getElementById('financialHealthChart').getContext('2d');
+            const healthData = data.financial_indicators || {};
+            
+            if (charts.financialHealth) charts.financialHealth.destroy();
+            
+            charts.financialHealth = new Chart(ctx1, {
+                type: 'radar',
+                data: {
+                    labels: ['Cash Flow', 'Debt Health', 'Profitability', 'Working Capital'],
+                    datasets: [{
+                        label: 'Financial Health',
+                        data: Object.values(healthData),
+                        backgroundColor: 'rgba(102, 126, 234, 0.2)',
+                        borderColor: '#667eea',
+                        pointBackgroundColor: '#667eea'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { r: { min: 0, max: 1, ticks: { stepSize: 0.2 } } }
+                }
+            });
+
+            // Budget Utilization Chart
+            const ctx2 = document.getElementById('budgetUtilizationChart').getContext('2d');
+            
+            if (charts.budgetUtilization) charts.budgetUtilization.destroy();
+            
+            charts.budgetUtilization = new Chart(ctx2, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Used Budget', 'Available Budget'],
+                    datasets: [{ data: [71, 29], backgroundColor: ['#667eea', '#e0e6ed'] }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
         }
 
         // API Action Functions
@@ -1148,4 +1539,342 @@
         }
     </script>
 </body>
-</html>
+</html><script>
+        // API Configuration
+        const API_BASE_URL = 'http://localhost:8000/api';
+        
+        // Global variables
+        let charts = {};
+        let dashboardData = {};
+
+        // FIXED: Tab switching function in global scope
+        function showTab(tabName) {
+            console.log(`🔄 Switching to tab: ${tabName}`);
+            
+            // Remove active class from all tabs and content
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
+            
+            // Add active class to selected tab and content
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+            
+            // Initialize charts after a short delay
+            setTimeout(() => {
+                if (tabName === 'attrition' && dashboardData.attrition) {
+                    initializeAttritionCharts(dashboardData.attrition);
+                } else if (tabName === 'hiring' && dashboardData.hiring) {
+                    initializeHiringCharts(dashboardData.hiring);
+                } else if (tabName === 'optimization' && dashboardData.optimization) {
+                    initializeOptimizationCharts(dashboardData.optimization);
+                } else if (tabName === 'growth' && dashboardData.growth) {
+                    initializeGrowthCharts(dashboardData.growth);
+                }
+            }, 100);
+        }
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 Initializing HR Analytics Dashboard...');
+            initializeDashboard();
+        });
+
+        async function initializeDashboard() {
+            try {
+                await checkSystemStatus();
+                await loadDashboardData();
+                console.log('✅ Dashboard initialized successfully');
+            } catch (error) {
+                console.error('❌ Dashboard initialization failed:', error);
+                showError('Failed to initialize dashboard. Please check system status.');
+            }
+        }
+
+        async function checkSystemStatus() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/status`);
+                const status = await response.json();
+                
+                updateStatusIndicator(status);
+                updateSystemHealth(status);
+                
+                if (status.last_updated && status.last_updated !== 'never') {
+                    document.getElementById('lastUpdated').textContent = 
+                        `Last updated: ${new Date(status.last_updated).toLocaleString()}`;
+                }
+                
+            } catch (error) {
+                console.error('Status check failed:', error);
+                updateStatusIndicator({ system: 'error' });
+            }
+        }
+
+        function updateStatusIndicator(status) {
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            
+            if (status.system === 'operational' && status.data_status?.system_ready) {
+                dot.className = 'status-dot';
+                text.textContent = 'All Systems Ready';
+                text.style.color = 'white';
+            } else if (status.system === 'operational') {
+                dot.className = 'status-dot warning';
+                text.textContent = 'Partial Data Available';
+                text.style.color = '#f39c12';
+            } else {
+                dot.className = 'status-dot error';
+                text.textContent = 'System Issues';
+                text.style.color = '#e74c3c';
+            }
+        }
+
+        function updateSystemHealth(status) {
+            const container = document.getElementById('moduleStatusContainer');
+            
+            const modules = [
+                { name: 'Attrition Prediction', key: 'attrition', files: status.data_files?.attrition || 0 },
+                { name: 'Hiring Timeline', key: 'hiring', files: status.data_files?.hiring || 0 },
+                { name: 'Timeline Optimization', key: 'optimization', files: status.data_files?.optimization || 0 },
+                { name: 'Business Growth', key: 'growth', files: status.data_files?.growth || 0 }
+            ];
+            
+            container.innerHTML = '';
+            
+            modules.forEach(module => {
+                const moduleDiv = document.createElement('div');
+                moduleDiv.className = 'module-status';
+                
+                let statusClass = 'status-error';
+                let statusText = 'No data files found';
+                
+                if (module.files > 0) {
+                    statusClass = 'status-success';
+                    statusText = `${module.files} data file(s) available`;
+                }
+                
+                moduleDiv.innerHTML = `
+                    <span>
+                        <span class="status-icon ${statusClass}"></span>
+                        ${module.name}
+                    </span>
+                    <span>${statusText}</span>
+                `;
+                
+                container.appendChild(moduleDiv);
+                
+                // REMOVED: No longer disable tabs - all tabs stay clickable
+            });
+        }
+
+        async function loadDashboardData() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/dashboard-summary`);
+                
+                if (!response.ok) {
+                    throw new Error(`API Error: ${response.status} - ${response.statusText}`);
+                }
+                
+                dashboardData = await response.json();
+                
+                // Update each tab based on data status
+                updateAttritionTab(dashboardData.attrition);
+                updateHiringTab(dashboardData.hiring);
+                updateOptimizationTab(dashboardData.optimization);
+                updateGrowthTab(dashboardData.growth);
+                
+            } catch (error) {
+                console.error('Failed to load dashboard data:', error);
+                throw error;
+            }
+        }
+
+        function updateAttritionTab(data) {
+            const container = document.getElementById('attritionContent');
+            
+            if (data.status === 'error') {
+                container.innerHTML = createErrorState(
+                    'Attrition Prediction Data Not Available',
+                    data.message,
+                    [
+                        { text: 'Run Attrition Model', action: 'runAttritionModel()', primary: true },
+                        { text: 'Check File Location', action: 'showFileHelp("attrition")' }
+                    ],
+                    data
+                );
+                return;
+            }
+            
+            // Create successful attrition display
+            container.innerHTML = `
+                <div class="dashboard-grid grid-4">
+                    <div class="card metric-card">
+                        <div class="metric-value risk-high">${data.metrics.high_risk_count}</div>
+                        <div class="metric-label">High Risk Employees</div>
+                    </div>
+                    <div class="card metric-card">
+                        <div class="metric-value risk-medium">${data.metrics.medium_risk_count}</div>
+                        <div class="metric-label">Medium Risk Employees</div>
+                    </div>
+                    <div class="card metric-card">
+                        <div class="metric-value risk-low">${data.metrics.low_risk_count}</div>
+                        <div class="metric-label">Low Risk Employees</div>
+                    </div>
+                    <div class="card metric-card">
+                        <div class="metric-value" style="color: #667eea;">${data.metrics.avg_notice_period}</div>
+                        <div class="metric-label">Avg Notice Period (days)</div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid grid-2">
+                    <div class="card">
+                        <h3>🚨 High Risk Employees</h3>
+                        <button class="export-btn" onclick="exportData('attrition')">📤 Export</button>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Employee</th>
+                                        <th>Department</th>
+                                        <th>Risk %</th>
+                                        <th>Est. Departure</th>
+                                        <th>Notice Period</th>
+                                        <th>Risk Factors</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${data.high_risk_employees.map(emp => `
+                                        <tr>
+                                            <td>${emp.name}</td>
+                                            <td>${emp.department}</td>
+                                            <td><span class="status-badge badge-high">${Math.round(emp.risk * 100)}%</span></td>
+                                            <td>${emp.departure}</td>
+                                            <td>${emp.notice} days</td>
+                                            <td><div class="risk-factors">${emp.risk_factors}</div></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>📊 Risk Distribution by Department</h3>
+                        <div class="chart-container">
+                            <canvas id="riskByDeptChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>🔮 Attrition Timeline</h3>
+                    <div class="chart-container">
+                        <canvas id="attritionTimelineChart"></canvas>
+                    </div>
+                </div>
+            `;
+            
+            // Initialize charts
+            setTimeout(() => initializeAttritionCharts(data), 100);
+            
+            showAlert('success', `✅ Attrition data loaded from: ${data.source_file}`);
+        }
+
+        function updateHiringTab(data) {
+            const container = document.getElementById('hiringContent');
+            
+            if (data.status === 'error') {
+                container.innerHTML = createErrorState(
+                    'Hiring Timeline Data Not Available',
+                    data.message,
+                    [
+                        { text: 'Run Hiring Calculator', action: 'runHiringCalculation()', primary: true },
+                        { text: 'Run Attrition Model First', action: 'runAttritionModel()' }
+                    ],
+                    data
+                );
+                return;
+            }
+            
+            // Create successful hiring display
+            container.innerHTML = `
+                <div class="alert alert-info">
+                    <strong>📋 Hiring Intelligence:</strong> Based on ML predictions and business growth analysis
+                </div>
+
+                <div class="dashboard-grid grid-3">
+                    <div class="card metric-card">
+                        <div class="metric-value" style="color: #e74c3c;">${data.metrics.total_replacement_hires}</div>
+                        <div class="metric-label">Replacement Hires Needed</div>
+                    </div>
+                    <div class="card metric-card">
+                        <div class="metric-value" style="color: #27ae60;">${data.metrics.total_growth_hires}</div>
+                        <div class="metric-label">Growth Hires Planned</div>
+                    </div>
+                    <div class="card metric-card">
+                        <div class="metric-value" style="color: #f39c12;">${data.metrics.immediate_actions}</div>
+                        <div class="metric-label">Immediate Actions</div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid grid-2">
+                    <div class="card">
+                        <h3>🚨 Immediate Hiring Actions</h3>
+                        <button class="export-btn" onclick="exportData('hiring')">📤 Export</button>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Employee</th>
+                                        <th>Department</th>
+                                        <th>Priority</th>
+                                        <th>Action Status</th>
+                                        <th>Departure Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${data.immediate_actions.map(action => `
+                                        <tr>
+                                            <td>${action.name}</td>
+                                            <td>${action.department}</td>
+                                            <td><span class="status-badge badge-${action.priority.toLowerCase()}">${action.priority}</span></td>
+                                            <td>${action.status}</td>
+                                            <td>${action.departure}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>📈 Hiring by Department</h3>
+                        <div class="chart-container">
+                            <canvas id="hiringByDeptChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>📅 Hiring Timeline</h3>
+                    <div id="hiringTimelineContainer">
+                        ${data.timeline_items.map(item => `
+                            <div class="timeline-item">
+                                <div class="timeline-date">${item.date}</div>
+                                <div class="timeline-content">
+                                    <div class="priority-indicator priority-${item.priority}"></div>
+                                    ${item.content}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+            
+            // Initialize hiring chart
+            setTimeout(() => initializeHiringCharts(data), 100);
+            
+            showAlert('success', `✅ Hiring data loaded from: ${data.source_file}`);
+        }
+
+        function updateOptimizationTab(data) {
+            const container = document.getElementById('optimizationContent');
